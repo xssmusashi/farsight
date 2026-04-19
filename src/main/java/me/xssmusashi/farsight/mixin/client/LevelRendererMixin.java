@@ -4,10 +4,11 @@ import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import me.xssmusashi.farsight.render.FarsightFrameState;
 import me.xssmusashi.farsight.render.FarsightRenderHook;
-import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.LevelRenderer;
-import org.joml.Matrix4f;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -15,13 +16,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Hooks MC's per-frame world render entry point. Injected at {@code HEAD}
- * of the public {@code renderLevel(...)} method so the state it captures is
- * available to {@link FarsightRenderHook}.
+ * Hooks MC's per-frame world render entry point. MC 26.1.1 frame-graph
+ * signature is
+ * {@code renderLevel(GraphicsResourceAllocator, DeltaTracker, boolean,
+ * CameraRenderState, Matrix4fc, GpuBufferSlice, Vector4f, boolean,
+ * ChunkSectionsToRender)} — only the projection matrix is passed; view
+ * transforms live on {@code CameraRenderState}.
  *
- * <p>Uses {@code require = 0} so signature drift in a 26.1.x point release
- * degrades to a logged warning rather than failing mod load — ingest and
- * LMDB persistence keep working even if the render path sits idle.</p>
+ * <p>{@code require = 0} keeps mod load resilient against 26.1.x drift —
+ * ingest + LMDB keep working even if the render path sits idle.</p>
  */
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
@@ -31,18 +34,14 @@ public abstract class LevelRendererMixin {
             GraphicsResourceAllocator allocator,
             DeltaTracker tickCounter,
             boolean renderBlockOutline,
-            Camera camera,
-            Matrix4f positionMatrix,
-            Matrix4f basicProjectionMatrix,
-            Matrix4f projectionMatrix,
+            CameraRenderState cameraRenderState,
+            Matrix4fc projectionMatrix,
             GpuBufferSlice fogBuffer,
             Vector4f fogColor,
             boolean renderSky,
+            ChunkSectionsToRender chunkSectionsToRender,
             CallbackInfo ci) {
-        // Camera position getters shifted in 26.1.1; skip capture for now — fog
-        // falls back to origin, fix in a follow-up when the stable accessor is
-        // confirmed.
-        FarsightFrameState.update(positionMatrix, projectionMatrix, 0f, 0f, 0f);
+        FarsightFrameState.update(projectionMatrix);
         FarsightRenderHook.onFrame();
     }
 }
