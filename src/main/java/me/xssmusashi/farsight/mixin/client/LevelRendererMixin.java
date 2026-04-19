@@ -6,6 +6,7 @@ import me.xssmusashi.farsight.FarsightClient;
 import me.xssmusashi.farsight.render.FarsightFrameState;
 import me.xssmusashi.farsight.render.FarsightRenderHook;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
@@ -55,40 +56,48 @@ public abstract class LevelRendererMixin {
     }
 
     /**
-     * Builds {@code projection × viewRotation × translate(-cameraPos)} — the
-     * transform MC applies around every {@code renderLevel} call. Both
-     * {@code viewRotationMatrix} and {@code pos} are fields on
-     * {@link CameraRenderState} (see {@code farsight$dumpCameraRenderState}
-     * output logged on the first frame). Reflection is used so Farsight does
-     * not need a compile-time dependency on internal MC class shape.
+     * Builds a view-projection matrix from scratch. The {@code Matrix4fc} arg
+     * passed to {@code renderLevel} is actually {@code viewRotationMatrix}
+     * (verified by matching {@code m00}), not a perspective matrix — and
+     * {@code state.projectionMatrix} field carries {@code m00=Infinity}, so
+     * it's unusable too. We therefore rebuild perspective ourselves from
+     * {@code hudFov} + {@code depthFar} + window aspect, then apply
+     * rotation + camera translation.
      */
-    private static Matrix4f farsight$buildViewProj(CameraRenderState state, Matrix4fc projection) {
-        Matrix4f result = new Matrix4f(projection);
-        if (state == null) return result;
+    private static Matrix4f farsight$buildViewProj(CameraRenderState state, Matrix4fc projectionArg) {
+        if (state == null) return new Matrix4f();
         try {
             Class<?> c = state.getClass();
 
+            float fov = c.getDeclaredField("hudFov").getFloat(state);
+            float far = c.getDeclaredField("depthFar").getFloat(state);
+
             Field viewRotField = c.getDeclaredField("viewRotationMatrix");
             viewRotField.setAccessible(true);
-            Object rot = viewRotField.get(state);
-            if (rot instanceof Matrix4fc m) {
-                result.mul(m);
-            }
+            Matrix4fc viewRot = (Matrix4fc) viewRotField.get(state);
 
             Field posField = c.getDeclaredField("pos");
             posField.setAccessible(true);
             Object pos = posField.get(state);
-            if (pos != null) {
-                Class<?> pc = pos.getClass();
-                double px = pc.getField("x").getDouble(pos);
-                double py = pc.getField("y").getDouble(pos);
-                double pz = pc.getField("z").getDouble(pos);
-                result.translate((float) -px, (float) -py, (float) -pz);
-            }
+            Class<?> pc = pos.getClass();
+            double px = pc.getField("x").getDouble(pos);
+            double py = pc.getField("y").getDouble(pos);
+            double pz = pc.getField("z").getDouble(pos);
+
+            Minecraft mc = Minecraft.getInstance();
+            int w = mc.getWindow().getWidth();
+            int h = mc.getWindow().getHeight();
+            float aspect = (h == 0) ? 1f : (float) w / (float) h;
+
+            Matrix4f vp = new Matrix4f();
+            vp.perspective((float) Math.toRadians(fov), aspect, 0.05f, Math.max(far, 512f));
+            if (viewRot != null) vp.mul(viewRot);
+            vp.translate((float) -px, (float) -py, (float) -pz);
+            return vp;
         } catch (Throwable t) {
-            FarsightClient.LOGGER.debug("view-proj build fallback: {}", t.toString());
+            FarsightClient.LOGGER.debug("buildViewProj fallback: {}", t.toString());
+            return new Matrix4f(projectionArg);
         }
-        return result;
     }
 
     private static void farsight$dumpCameraRenderState(CameraRenderState state) {
