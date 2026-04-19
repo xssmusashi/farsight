@@ -26,5 +26,6 @@ class IrisCompatibilityTest {
         assertEquals(0, a.gbufferFboId());
         assertEquals(0, a.terrainProgramId());
         assertEquals(1, a.colorAttachmentCount());
+        assertInstanceOf(InactiveIrisAdapter.class, a);
     }
 }

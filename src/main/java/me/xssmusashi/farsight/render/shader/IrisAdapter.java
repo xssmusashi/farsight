@@ -1,5 +1,6 @@
 package me.xssmusashi.farsight.render.shader;
 
+import me.xssmusashi.farsight.FarsightClient;
 import org.lwjgl.opengl.GL46;
 
 /**
@@ -9,18 +10,18 @@ import org.lwjgl.opengl.GL46;
  *
  * <p>Two concrete implementations:</p>
  * <ul>
- *   <li>{@link Inactive} — used when Iris is not installed or no pack is
- *       active. Farsight renders into the default backbuffer.</li>
- *   <li>{@link IrisBacked} — reflective adapter that queries Iris's current
- *       gbuffer framebuffer and program handles. Currently returns read-only
- *       stubs; a future session will wire the actual FBO bind + MRT writes.</li>
+ *   <li>{@link InactiveIrisAdapter} — used when Iris is not installed or no
+ *       pack is active; renders into the default backbuffer.</li>
+ *   <li>{@code me.xssmusashi.farsight.render.iris.RealIrisAdapter} — direct
+ *       Iris imports, only loaded when Iris is present at runtime
+ *       (instantiated through {@link #resolve()} via {@link Class#forName}
+ *       so class resolution is deferred).</li>
  * </ul>
  *
- * <p>The separation here keeps Farsight's core render path free of {@code
- * net.irisshaders} imports. {@link IrisBacked} does all reflection in one
- * place and all other call sites go through this interface.</p>
+ * <p>All call sites go through this interface — Iris imports are contained to
+ * the {@code me.xssmusashi.farsight.render.iris} sub-package.</p>
  */
-public sealed interface IrisAdapter permits IrisAdapter.Inactive, IrisAdapter.IrisBacked {
+public interface IrisAdapter {
 
     boolean isActive();
 
@@ -30,11 +31,7 @@ public sealed interface IrisAdapter permits IrisAdapter.Inactive, IrisAdapter.Ir
     /** Number of colour attachments the current shader pack binds (usually 4-8). */
     int colorAttachmentCount();
 
-    /**
-     * Returns a program handle that Iris would use to render terrain for
-     * the current pass, or 0 if Farsight should use its own shaders.
-     * Reserved for the future Phase-7-full implementation.
-     */
+    /** Compiled {@code gbuffers_terrain_solid} program id, or 0 if not available. */
     int terrainProgramId();
 
     /** Binds the gbuffer before Farsight draws. */
@@ -45,29 +42,27 @@ public sealed interface IrisAdapter permits IrisAdapter.Inactive, IrisAdapter.Ir
         }
     }
 
-    static IrisAdapter resolve() {
-        return IrisCompatibility.get().isShaderPackActive()
-            ? new IrisBacked()
-            : new Inactive();
-    }
-
-    final class Inactive implements IrisAdapter {
-        public boolean isActive()         { return false; }
-        public int gbufferFboId()         { return 0; }
-        public int colorAttachmentCount() { return 1; }
-        public int terrainProgramId()     { return 0; }
-    }
+    /** Re-resolves any cached Iris pipeline references. Call on hot-swap. */
+    default void refresh() {}
 
     /**
-     * Minimal reflective bridge. Resolves nothing right now — returns the
-     * same no-op values as {@link Inactive} but advertises that it <em>is</em>
-     * active. Lets the rest of the renderer exercise the
-     * "shader-pack-detected" code path while Phase 7 proper is built.
+     * Factory. Tries to build the real adapter reflectively when Iris is
+     * installed and a shader pack is active; falls back to {@link InactiveIrisAdapter}
+     * on any failure so Farsight never crashes when Iris is absent or its
+     * internal surface has drifted.
      */
-    final class IrisBacked implements IrisAdapter {
-        public boolean isActive()         { return true; }
-        public int gbufferFboId()         { return 0; }  // TODO: resolve via Iris internals
-        public int colorAttachmentCount() { return 4; }  // TODO: read from shader pack config
-        public int terrainProgramId()     { return 0; }  // TODO: fetch gbuffers_terrain
+    static IrisAdapter resolve() {
+        IrisCompatibility compat = IrisCompatibility.get();
+        if (!compat.isInstalled() || !compat.isShaderPackActive()) {
+            return new InactiveIrisAdapter();
+        }
+        try {
+            Class<?> real = Class.forName("me.xssmusashi.farsight.render.iris.RealIrisAdapter");
+            return (IrisAdapter) real.getDeclaredConstructor().newInstance();
+        } catch (Throwable t) {
+            FarsightClient.LOGGER.warn(
+                "failed to load RealIrisAdapter — falling back to Inactive (Iris internals may have drifted)", t);
+            return new InactiveIrisAdapter();
+        }
     }
 }

@@ -60,6 +60,9 @@ dependencies {
     implementation "org.jctools:jctools-core:${project.jctools_version}"
     include "org.jctools:jctools-core:${project.jctools_version}"
 
+    // Iris — compile-only. Users provide Iris themselves; Farsight does not ship it.
+    compileOnly("maven.modrinth:iris:1.10.9+26.1-fabric")
+
     // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.2'
