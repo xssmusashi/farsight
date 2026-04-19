@@ -25,6 +25,14 @@ repositories {
             includeGroup "maven.modrinth"
         }
     }
+    // DevAuth — enables `./gradlew runClient` to use a real Microsoft/MC
+    // account inside the dev environment. After the first launch, DevAuth
+    // opens a browser for Microsoft OAuth and caches the token under
+    // ~/.devauth/, so every subsequent runClient reuses it silently.
+    maven {
+        name = "DevAuth"
+        url = "https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1"
+    }
 }
 
 loom {
@@ -69,6 +77,11 @@ dependencies {
 
     // Iris — compile-only. Users provide Iris themselves; Farsight does not ship it.
     compileOnly("maven.modrinth:iris:1.10.9+26.1-fabric")
+
+    // DevAuth — runtime-only mod for dev environment. Not shipped.
+    runtimeOnly("me.djtheredstoner:DevAuth-fabric:1.2.2") {
+        exclude group: 'net.fabricmc', module: 'fabric-loader'
+    }
 
     // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
