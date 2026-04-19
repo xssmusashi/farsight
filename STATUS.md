@@ -26,6 +26,27 @@ Per-op measurements, 1 fork × 2 warmup × 3 iterations:
 
 Exceeds targets from plan (≥100 MB/s write, ≥300 MB/s read).
 
+## Mesher polygon reduction (greedy vs naive)
+
+Per 32³ section:
+
+| scene | naive quads | greedy quads | ratio |
+| --- | --- | --- | --- |
+| fully solid | 6144 | 6 | 1024× |
+| heightmap plateau terrain | ~5100 | ~950 | ≥5× (test-enforced) |
+
+Greedy mesher CPU cost (JMH avg time per section):
+
+| scene | greedy | naive |
+| --- | --- | --- |
+| fully solid | 176 μs | 102 μs |
+| noisy-terrain | 804 μs | 144 μs |
+| sparse | 394 μs | 43 μs |
+
+Trade-off is intentional — greedy does extra work per face-merge scan but the
+downstream GPU cost scales with quad count, not CPU time, so a 5–1000× reduction
+in quads is the relevant win.
+
 ## What does not
 
 - No LoD downsampling yet.
@@ -37,7 +58,8 @@ Exceeds targets from plan (≥100 MB/s write, ≥300 MB/s read).
 - [x] Phase 0 — Skeleton
 - [x] Phase 1 — Voxel data model + LMDB storage
 - [x] Phase 2 — LoD downsampling (majority-vote, priority-tie-break, intra-section mip pyramid)
-- [ ] Phase 3 — Greedy mesher
+- [x] Phase 3 — Greedy mesher (Mikola Lysenko) + naive A/B baseline + MeshBuilder vertex packer
+- [ ] Phase 4 — Chunk ingest pipeline
 - [ ] Phase 2 — LoD downsampling
 - [ ] Phase 3 — Greedy mesher
 - [ ] Phase 4 — Chunk ingest pipeline
