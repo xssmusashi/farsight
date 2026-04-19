@@ -1,40 +1,37 @@
 package me.xssmusashi.farsight.render;
 
 import me.xssmusashi.farsight.FarsightClient;
-import me.xssmusashi.farsight.core.mesh.MeshFormat;
 import me.xssmusashi.farsight.render.shader.IrisAdapter;
 import me.xssmusashi.farsight.render.shader.IrisCompatibility;
 import me.xssmusashi.farsight.render.shader.PipelineWatcher;
 import me.xssmusashi.farsight.render.shader.ShaderOverrides;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL43;
+import org.lwjgl.opengl.GL33;
 import org.lwjgl.opengl.GL46;
 
-import java.nio.FloatBuffer;
-
 /**
- * Top-level renderer orchestrator. Lazily initialises GL resources the first
- * time {@link #ensureInitialised()} is called from a thread that owns the GL
- * context; call {@link #close()} from the same thread on shutdown.
- *
- * <p>Phase A: a live draw pass — reads sections that have been registered
- * by {@link SectionLoader}, runs the frustum/Hi-Z culling compute to build
- * an indirect-draw list, then issues a single
- * {@code glMultiDrawElementsIndirectCount} covering every visible section.</p>
+ * GL 3.3-core renderer. MC exposes a 3.3 core context even on drivers that
+ * support 4.6, so the MDI + compute path from the earlier iteration is
+ * unreachable — calling {@code glMultiDrawElementsIndirectCount} crashes
+ * the JVM natively. This class therefore issues one
+ * {@code glDrawElementsBaseVertex} per registered section with
+ * {@code u_sectionOrigin} / {@code u_voxelScale} set as uniforms; a VAO
+ * binds the mega VBO once and the shared quad-index buffer rides alongside.
  */
 public final class FarsightRenderer implements AutoCloseable {
-    private static final int DEFAULT_MAX_SECTIONS = 16_384;
+    private static final int DEFAULT_MAX_SECTIONS = 8_192;
     private static final long DEFAULT_VBO_BYTES = 256L * 1024L * 1024L;
 
     private GpuContext context;
     private ShaderProgram sectionProgram;
-    private CullingCompute culling;
     private SectionVboPool vboPool;
     private SectionRegistry registry;
     private SectionLoader loader;
-    private MdicDrawBuffer drawBuffer;
     private QuadIndexBuffer indexBuffer;
     private int vao;
+    private int uViewProj = -1;
+    private int uSectionOrigin = -1;
+    private int uVoxelScale = -1;
     private IrisAdapter irisAdapter;
     private PipelineWatcher pipelineWatcher;
     private boolean initialised;
@@ -46,18 +43,19 @@ public final class FarsightRenderer implements AutoCloseable {
             pipelineWatcher = PipelineWatcher.defaultInstance();
             irisAdapter = IrisAdapter.resolve();
             sectionProgram = compileSectionProgram(irisAdapter);
-            culling = new CullingCompute();
+            uViewProj = sectionProgram.uniformLocation("u_viewProj");
+            uSectionOrigin = sectionProgram.uniformLocation("u_sectionOrigin");
+            uVoxelScale = sectionProgram.uniformLocation("u_voxelScale");
             vboPool = new SectionVboPool(DEFAULT_VBO_BYTES);
             int maxSections = Math.min(DEFAULT_MAX_SECTIONS,
                 Math.max(1024, FarsightClient.CONFIG.lodRenderDistance * 256));
             registry = new SectionRegistry(maxSections);
             loader = new SectionLoader(vboPool, registry);
-            drawBuffer = new MdicDrawBuffer(maxSections);
             indexBuffer = new QuadIndexBuffer(QuadIndexBuffer.DEFAULT_MAX_QUADS);
-            vao = createVao(indexBuffer.id());
+            vao = createVao(indexBuffer.id(), vboPool.bufferId());
             initialised = true;
             FarsightClient.LOGGER.info(
-                "Farsight renderer initialised (iris={}, pack={}, maxSections={})",
+                "Farsight renderer initialised — CPU-fallback draw loop, iris={}, pack={}, maxSections={}",
                 IrisCompatibility.get().isInstalled(),
                 IrisCompatibility.get().activeShaderPackName(),
                 maxSections);
@@ -68,11 +66,15 @@ public final class FarsightRenderer implements AutoCloseable {
         }
     }
 
-    private static int createVao(int elementBufferId) {
-        int vao = GL46.glGenVertexArrays();
-        GL46.glBindVertexArray(vao);
-        GL46.glBindBuffer(GL46.GL_ELEMENT_ARRAY_BUFFER, elementBufferId);
-        GL46.glBindVertexArray(0);
+    private static int createVao(int elementBufferId, int vertexBufferId) {
+        int vao = GL33.glGenVertexArrays();
+        GL33.glBindVertexArray(vao);
+        GL33.glBindBuffer(GL33.GL_ARRAY_BUFFER, vertexBufferId);
+        GL33.glEnableVertexAttribArray(0);
+        GL33.glVertexAttribIPointer(0, 4, GL33.GL_UNSIGNED_INT, 16, 0L);
+        GL33.glBindBuffer(GL33.GL_ELEMENT_ARRAY_BUFFER, elementBufferId);
+        GL33.glBindVertexArray(0);
+        GL33.glBindBuffer(GL33.GL_ARRAY_BUFFER, 0);
         return vao;
     }
 
@@ -93,12 +95,14 @@ public final class FarsightRenderer implements AutoCloseable {
             ShaderProgram next = compileSectionProgram(irisAdapter);
             if (sectionProgram != null) sectionProgram.close();
             sectionProgram = next;
+            uViewProj = sectionProgram.uniformLocation("u_viewProj");
+            uSectionOrigin = sectionProgram.uniformLocation("u_sectionOrigin");
+            uVoxelScale = sectionProgram.uniformLocation("u_voxelScale");
         } catch (RuntimeException e) {
             FarsightClient.LOGGER.error("section program recompile on hot-swap failed — keeping old program", e);
         }
     }
 
-    /** Called every frame from {@link FarsightRenderHook#onFrame}. */
     public void beginFrame() {
         if (!initialised) return;
         if (pipelineWatcher.tick()) {
@@ -109,51 +113,36 @@ public final class FarsightRenderer implements AutoCloseable {
     }
 
     /**
-     * Full draw pass: frustum/Hi-Z culling compute → indirect draw. Safe to
-     * call before sections have been loaded (just issues an empty draw).
+     * Iterates the live section registry and issues one glDrawElementsBaseVertex
+     * per section. Ugly but GL-3.3-safe.
      */
     public void drawFrame(Matrix4f viewProjection) {
         if (!initialised) return;
-        int sectionCount = registry.highWaterMark();
-        if (sectionCount == 0) return;
+        if (registry.liveCount() == 0) return;
 
-        // Dispatch culling compute — populates drawBuffer commands + counter.
-        FloatBuffer mat = org.lwjgl.BufferUtils.createFloatBuffer(16);
-        viewProjection.get(mat);
         float[] matArray = new float[16];
-        mat.get(matArray);
-        culling.dispatch(
-            sectionCount,
-            registry.ssboId(),
-            drawBuffer.commandBufferId(),
-            drawBuffer.counterBufferId(),
-            /* hiZTex     */ 0,
-            /* hiZWidth   */ 1,
-            /* hiZHeight  */ 1,
-            matArray);
-
-        // Bind common resources for the draw.
-        GL46.glBindVertexArray(vao);
-        GL46.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 0, vboPool.bufferId());
-        GL46.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 2, registry.ssboId());
-        GL46.glBindBuffer(GL46.GL_DRAW_INDIRECT_BUFFER, drawBuffer.commandBufferId());
-        GL46.glBindBuffer(GL46.GL_PARAMETER_BUFFER,     drawBuffer.counterBufferId());
+        viewProjection.get(matArray);
 
         sectionProgram.use();
-        GL46.glUniformMatrix4fv(
-            sectionProgram.uniformLocation("u_viewProj"), false, matArray);
+        GL33.glUniformMatrix4fv(uViewProj, false, matArray);
 
-        GL46.glMultiDrawElementsIndirectCount(
-            GL46.GL_TRIANGLES,
-            GL46.GL_UNSIGNED_INT,
-            0L,
-            0L,
-            drawBuffer.maxCommands(),
-            0);
+        GL33.glBindVertexArray(vao);
 
-        GL46.glBindBuffer(GL46.GL_DRAW_INDIRECT_BUFFER, 0);
-        GL46.glBindBuffer(GL46.GL_PARAMETER_BUFFER, 0);
-        GL46.glBindVertexArray(0);
+        SectionRegistry.Slot[] snap = registry.snapshot();
+        for (int i = 0; i < snap.length; i++) {
+            SectionRegistry.Slot s = snap[i];
+            if (s == null) continue;
+            GL33.glUniform3f(uSectionOrigin, s.originX(), s.originY(), s.originZ());
+            GL33.glUniform1f(uVoxelScale, s.voxelScale());
+            GL33.glDrawElementsBaseVertex(
+                GL33.GL_TRIANGLES,
+                s.indexCount(),
+                GL33.GL_UNSIGNED_INT,
+                0L,
+                s.baseVertex());
+        }
+
+        GL33.glBindVertexArray(0);
     }
 
     public boolean isInitialised()          { return initialised; }
@@ -166,8 +155,6 @@ public final class FarsightRenderer implements AutoCloseable {
     public void close() {
         try { if (vao != 0) GL46.glDeleteVertexArrays(vao); } catch (Exception ignored) {}
         try { if (indexBuffer != null) indexBuffer.close(); } catch (Exception ignored) {}
-        try { if (culling != null) culling.close(); } catch (Exception ignored) {}
-        try { if (drawBuffer != null) drawBuffer.close(); } catch (Exception ignored) {}
         try { if (registry != null) registry.close(); } catch (Exception ignored) {}
         try { if (vboPool != null) vboPool.close(); } catch (Exception ignored) {}
         try { if (sectionProgram != null) sectionProgram.close(); } catch (Exception ignored) {}

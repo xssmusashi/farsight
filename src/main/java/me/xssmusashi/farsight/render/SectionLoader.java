@@ -4,6 +4,7 @@ import me.xssmusashi.farsight.FarsightClient;
 import me.xssmusashi.farsight.core.storage.MeshBlob;
 import me.xssmusashi.farsight.core.storage.SectionKey;
 import me.xssmusashi.farsight.core.storage.SectionStore;
+import me.xssmusashi.farsight.core.mesh.MeshFormat;
 import me.xssmusashi.farsight.core.voxel.Section;
 import me.xssmusashi.farsight.ingest.PendingSections;
 import me.xssmusashi.farsight.world.WorldLifecycle;
@@ -69,10 +70,12 @@ public final class SectionLoader {
             return;
         }
         float extent = Section.SIZE * blob.voxelScale();
+        int indexCount = blob.quadCount() * MeshFormat.INDICES_PER_QUAD;
         int slot = registry.register(
             blob.originX(), blob.originY(), blob.originZ(),
             extent, blob.voxelScale(),
-            (int) baseVertex);
+            (int) baseVertex,
+            indexCount);
         if (slot < 0) {
             FarsightClient.LOGGER.debug("SectionRegistry full — dropping section {}", key);
         }

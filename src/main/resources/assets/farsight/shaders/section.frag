@@ -1,4 +1,4 @@
-#version 430 core
+#version 330 core
 
 flat in uint v_stateId;
 flat in uint v_faceIdx;
@@ -21,13 +21,11 @@ vec3 hashColor(uint id) {
 }
 
 float faceLight(uint face) {
-    switch (int(face)) {
-        case 0: case 1: return 0.75;   // -X / +X
-        case 2:         return 0.55;   // -Y (bottom)
-        case 3:         return 1.00;   // +Y (top)
-        case 4: case 5: return 0.85;   // -Z / +Z
-        default:        return 1.00;
-    }
+    if (face == 0u || face == 1u) return 0.75;
+    if (face == 2u) return 0.55;
+    if (face == 3u) return 1.00;
+    if (face == 4u || face == 5u) return 0.85;
+    return 1.00;
 }
 
 void main() {
