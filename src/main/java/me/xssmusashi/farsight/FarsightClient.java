@@ -1,6 +1,7 @@
 package me.xssmusashi.farsight;
 
 import me.xssmusashi.farsight.commands.FarsightCommand;
+import me.xssmusashi.farsight.config.FarsightConfig;
 import me.xssmusashi.farsight.ingest.ChunkIngestor;
 import net.fabricmc.api.ClientModInitializer;
 import org.slf4j.Logger;
@@ -15,9 +16,13 @@ public final class FarsightClient implements ClientModInitializer {
     /** Current active ingestor — populated on world join, cleared on disconnect. */
     public static final AtomicReference<ChunkIngestor> ACTIVE_INGESTOR = new AtomicReference<>();
 
+    public static FarsightConfig CONFIG = new FarsightConfig();
+
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Farsight client initialising — alpha");
+        CONFIG = FarsightConfig.loadOrCreateDefault();
+        LOGGER.info("Farsight {} initialising — lodRenderDistance={}, compute culling={}",
+            MOD_ID, CONFIG.lodRenderDistance, CONFIG.useComputeCulling);
         FarsightCommand.register(ACTIVE_INGESTOR::get);
     }
 }
