@@ -36,7 +36,8 @@ Exceeds targets from plan (≥100 MB/s write, ≥300 MB/s read).
 
 - [x] Phase 0 — Skeleton
 - [x] Phase 1 — Voxel data model + LMDB storage
-- [ ] Phase 2 — LoD downsampling
+- [x] Phase 2 — LoD downsampling (majority-vote, priority-tie-break, intra-section mip pyramid)
+- [ ] Phase 3 — Greedy mesher
 - [ ] Phase 2 — LoD downsampling
 - [ ] Phase 3 — Greedy mesher
 - [ ] Phase 4 — Chunk ingest pipeline
