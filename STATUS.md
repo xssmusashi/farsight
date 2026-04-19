@@ -1,6 +1,6 @@
 # Farsight status
 
-_Last updated 2026-04-20 (v0.1.5-alpha)._
+_Last updated 2026-04-20 (v0.1.6-alpha)._
 
 ## Summary
 
@@ -34,12 +34,25 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 ## What works
 
 - `./gradlew build` produces a loadable jar (`farsight-0.1.0-alpha.jar`).
-- 60 unit tests pass across voxel, palette, section, LMDB, LoD (intra- and cross-section), mesher, AO, biome palette, ingest, config, region discovery, shader resources, Iris compat probe, shader overrides, pipeline watcher, world session lifecycle.
+- 63 unit tests pass across voxel, palette, section, LMDB, LoD (intra- and cross-section), mesher, AO, biome palette, ingest, config, region discovery, mesh blob encode/decode, shader resources, Iris compat probe, shader overrides, pipeline watcher, world session lifecycle.
 - Storage benchmarks exceed targets (see below).
 - Greedy mesher passes its ≥5× polygon-reduction gate on realistic heightmap terrain.
 - Client mod entrypoint logs init, loads config, registers `/farsight stats` and `/farsight rebuild` commands.
 
-## v0.1.5 additions — wiring into Minecraft
+## v0.1.6 additions — live render pipeline
+
+- **`LmdbStorage`** now hosts two DBIs: `sections` (voxel data) and `meshes` (pre-baked vertex blobs). Section-Key is reused for both; writes/reads share the same write transaction semantics.
+- **`MeshBlob`** — compact on-disk record (`u32 quadCount`, `i32 originXYZ`, `f32 voxelScale`, raw vertex bytes) with explicit encode/decode + 3 unit tests.
+- **`ChunkIngestor.process`** now bakes the native-level greedy mesh with AO + biome context, persists it via `LmdbStorage.putMesh`, and publishes the key to `PendingSections.QUEUE` — a lockfree MPSC (`jctools.MpscArrayQueue`) that bridges the ingest ForkJoinPool (many producers) to the single render thread (one consumer).
+- **`QuadIndexBuffer`** — a single shared `GL_ELEMENT_ARRAY_BUFFER` pre-filled with the `[0,1,2, 0,2,3]` pattern for up to 4096 quads; all sections reuse it via `baseVertex` on the indirect-draw command.
+- **`SectionRegistry`** — persistent-mapped SSBO of `{vec4 aabbMin(origin, voxelScale), vec4 aabbMax(origin+extent, baseVertex-bits)}` records. Free-slot bitmap keeps section IDs stable so the culling compute's `baseInstance` output and the vertex shader's `gl_BaseInstance` lookup line up.
+- **`SectionLoader`** — render-thread consumer of `PendingSections.QUEUE`. Each frame, drains up to 8 keys, reads the mesh blob from the active `WorldSession.storage()`, allocates in the `SectionVboPool`, and registers an AABB slot in the registry.
+- **`FarsightRenderer.drawFrame`** — full GPU-driven pass: dispatches `CullingCompute` (input = SectionRecord SSBO, output = indirect commands + atomic counter), binds the VAO/mega-VBO/registry SSBO, runs the section shader with `u_viewProj`, and issues one `glMultiDrawElementsIndirectCount` that covers every surviving section in the frame.
+- **`FarsightFrameState`** — `AtomicReference<Frame>` holder; written by the mixin right before each `onFrame`, read by the renderer in the same call. Keeps the matrices off any thread-unsafe shared field.
+- **`LevelRendererMixin`** — switched from a zero-arg `CallbackInfo`-only handler to the full 10-arg signature so it can capture `positionMatrix` and `projectionMatrix`. `require = 0` still protects mod load from descriptor drift.
+- **`section.vert`** now reads per-section origin + voxelScale from the Registry SSBO (`binding = 2`) using `gl_BaseInstance` (via `GL_ARB_shader_draw_parameters`, GL 4.6 core) — one uniform (`u_viewProj`) does the whole per-frame state.
+
+## Earlier: v0.1.5 additions — wiring into Minecraft
 
 - **`LevelRendererMixin`** — `@Inject(method = "renderLevel", at = @At("HEAD"), require = 0)` calls `FarsightRenderHook.onFrame()` every frame. `require = 0` means descriptor drift in 26.1.x point releases logs a warning instead of crashing mod load; Farsight still loads and ingests, only the render pass sits idle.
 - **`FarsightRenderHook`** — wraps `FarsightRenderer.ensureInitialised()` + `beginFrame()` in one try/catch. First exception permanently disables the hook for the session (no loop-crash inside the render thread).
@@ -48,11 +61,13 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 - **`ChunkObserver`** — hooks `ClientChunkEvents.CHUNK_LOAD`. For each MC `LevelChunkSection`, packs block states into a `ChunkSnapshot` occupying the lower 16×16×16 octant of a Farsight 32³ (upper half stays air for this pass — cross-chunk aggregation is the next refinement). Skips `hasOnlyAir()` sections, submits the rest to the ingestor.
 - **`BlockStateMapper`** — `BlockState` → packed voxel entry. Uses `Block.BLOCK_STATE_REGISTRY.getId(state)` truncated to 24 bits, derives flags from `getFluidState()` / `isSolid()`.
 
-## What does not
+## What does not (as of v0.1.6)
 
-- **No actual draw pass yet.** The render hook runs `beginFrame()` (Iris pipeline watcher tick + adapter FBO bind) but does not yet dispatch the culling compute or draw sections. That last step needs the VBO pool populated with mesh bytes from persisted sections — section-mesh persistence is the missing link.
-- **Sparse Farsight sections.** Chunk ingest currently produces sections with content only in the lower octant — 4 MC chunks are not yet merged into one 32³ native section.
+- **Camera position uniform** — Mojang renamed the position accessors off `Camera` in 26.1.1 and the exact replacement hasn't been pinned down; the mixin passes {0,0,0} as camera pos, so the fragment shader's fog distance is measured from the world origin until that's fixed. Visual weirdness only — geometry still renders.
+- **Hi-Z depth pyramid** is never built; the culling compute receives a placeholder 1×1 texture handle. Frustum culling works, occlusion culling is effectively a no-op.
+- **Sparse Farsight sections.** Chunk ingest still produces sections with content only in the lower octant; 4 MC chunks → 1 full 32³ Farsight section is the next refinement.
 - **No biome IDs yet.** `BlockStateMapper.toVoxel(state, 0)` — biome is always 0 until the registry lookup is wired.
+- **`BiomeColors` SSBO at binding 1 is not uploaded** — fragment shader reads zero-sized SSBO, `biomeColors[biomeId]` returns `vec3(0.5)`. Palette upload pass is Session C.
 - **Minecraft chunk data is never captured.** Ingest pipeline is end-to-end testable with synthetic snapshots, but there is no mixin/event hook that turns real `LevelChunk` data into `ChunkSnapshot`.
 - **Cross-section LoD aggregation** (stitching 8 adjacent native sections into one level-1 section, and so on up the tree) is not implemented. Only intra-section mip pyramids exist.
 - **Mesh persistence** is not done — meshes are built on ingest but not stored; Phase 5 would need them on disk.

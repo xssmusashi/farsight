@@ -28,6 +28,7 @@ public final class LmdbStorage implements AutoCloseable {
 
     private final Env<ByteBuffer> env;
     private final Dbi<ByteBuffer> sections;
+    private final Dbi<ByteBuffer> meshes;
 
     public LmdbStorage(Path directory) {
         this(directory, DEFAULT_MAP_SIZE);
@@ -45,26 +46,35 @@ public final class LmdbStorage implements AutoCloseable {
                 .setMaxReaders(128)
                 .open(directory.toFile(), EnvFlags.MDB_NOTLS, EnvFlags.MDB_NOSYNC);
         this.sections = env.openDbi("sections", DbiFlags.MDB_CREATE);
+        this.meshes = env.openDbi("meshes", DbiFlags.MDB_CREATE);
     }
 
-    public void put(SectionKey key, byte[] value) {
+    public void put(SectionKey key, byte[] value) { put(sections, key, value); }
+    public byte[] get(SectionKey key)              { return get(sections, key); }
+    public boolean delete(SectionKey key)          { return delete(sections, key); }
+
+    public void putMesh(SectionKey key, byte[] value) { put(meshes, key, value); }
+    public byte[] getMesh(SectionKey key)              { return get(meshes, key); }
+    public boolean deleteMesh(SectionKey key)          { return delete(meshes, key); }
+
+    private void put(Dbi<ByteBuffer> dbi, SectionKey key, byte[] value) {
         try (Txn<ByteBuffer> txn = env.txnWrite()) {
             ByteBuffer keyBuf = allocateDirect(SectionKey.BYTES);
             key.writeTo(keyBuf);
             keyBuf.flip();
             ByteBuffer valBuf = allocateDirect(value.length);
             valBuf.put(value).flip();
-            sections.put(txn, keyBuf, valBuf);
+            dbi.put(txn, keyBuf, valBuf);
             txn.commit();
         }
     }
 
-    public byte[] get(SectionKey key) {
+    private byte[] get(Dbi<ByteBuffer> dbi, SectionKey key) {
         try (Txn<ByteBuffer> txn = env.txnRead()) {
             ByteBuffer keyBuf = allocateDirect(SectionKey.BYTES);
             key.writeTo(keyBuf);
             keyBuf.flip();
-            ByteBuffer val = sections.get(txn, keyBuf);
+            ByteBuffer val = dbi.get(txn, keyBuf);
             if (val == null) return null;
             byte[] out = new byte[val.remaining()];
             val.duplicate().get(out);
@@ -72,12 +82,12 @@ public final class LmdbStorage implements AutoCloseable {
         }
     }
 
-    public boolean delete(SectionKey key) {
+    private boolean delete(Dbi<ByteBuffer> dbi, SectionKey key) {
         try (Txn<ByteBuffer> txn = env.txnWrite()) {
             ByteBuffer keyBuf = allocateDirect(SectionKey.BYTES);
             key.writeTo(keyBuf);
             keyBuf.flip();
-            boolean removed = sections.delete(txn, keyBuf);
+            boolean removed = dbi.delete(txn, keyBuf);
             txn.commit();
             return removed;
         }
@@ -95,6 +105,7 @@ public final class LmdbStorage implements AutoCloseable {
 
     @Override
     public void close() {
+        meshes.close();
         sections.close();
         env.close();
     }

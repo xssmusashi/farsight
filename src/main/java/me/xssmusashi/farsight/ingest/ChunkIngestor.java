@@ -2,9 +2,11 @@ package me.xssmusashi.farsight.ingest;
 
 import me.xssmusashi.farsight.core.lod.LodPyramid;
 import me.xssmusashi.farsight.core.mesh.GreedyMesher;
-import me.xssmusashi.farsight.core.mesh.QuadCounter;
+import me.xssmusashi.farsight.core.mesh.MeshBuilder;
 import me.xssmusashi.farsight.core.storage.LmdbStorage;
+import me.xssmusashi.farsight.core.storage.MeshBlob;
 import me.xssmusashi.farsight.core.storage.SectionCodec;
+import me.xssmusashi.farsight.core.storage.SectionKey;
 import me.xssmusashi.farsight.core.voxel.Section;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,13 +73,29 @@ public final class ChunkIngestor implements AutoCloseable {
         byte[] framed = SectionCodec.encode(raw);
         storage.put(snapshot.key(), framed);
 
-        // Build the mip pyramid proactively — useful for Phase 5 GPU consumption.
-        // Storage of mip levels is deferred until cross-section aggregation is in place.
+        // Build the mip pyramid — intra-section mips will feed cross-section
+        // aggregation in a later pass.
         LodPyramid.build(section);
 
-        // Count polygons produced by meshing the native level — useful for stats.
-        QuadCounter counter = new QuadCounter();
-        int quads = new GreedyMesher().mesh(section, counter);
+        // Bake the native-level mesh and persist it alongside the voxel data.
+        long[] voxels = new long[Section.VOLUME];
+        for (int i = 0; i < Section.VOLUME; i++) voxels[i] = section.getByIndex(i);
+
+        MeshBuilder mb = new MeshBuilder(16 * 1024).sectionContext(voxels);
+        int quads = new GreedyMesher().mesh(section, mb);
+
+        SectionKey key = snapshot.key();
+        if (quads > 0) {
+            int scale = 16;      // chunk-aligned ingest — one MC 16³ section per Farsight 32³
+            int originX = key.sx() * scale;
+            int originY = key.sy() * scale;
+            int originZ = key.sz() * scale;
+            MeshBlob blob = new MeshBlob(originX, originY, originZ, 1.0f, quads, mb.toByteArray());
+            byte[] meshBytes = blob.encode();
+            storage.putMesh(key, meshBytes);
+            stats.bytesWritten.addAndGet(meshBytes.length);
+            PendingSections.publish(key);
+        }
 
         stats.sectionsIngested.incrementAndGet();
         stats.bytesWritten.addAndGet(framed.length);

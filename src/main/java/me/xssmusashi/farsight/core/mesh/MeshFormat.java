@@ -58,4 +58,30 @@ public final class MeshFormat {
     public static int packStateFlags(int blockstate, int flags) {
         return (blockstate & 0xFFFFFF) | ((flags & 0xFF) << 24);
     }
+
+    /**
+     * Builds a shared quad→triangle index buffer of capacity
+     * {@code maxQuads} quads. Pattern per quad is
+     * {@code [v0,v1,v2, v0,v2,v3]} where {@code v0..v3} are the four
+     * consecutive vertex indices within the section. Same IBO is reused by
+     * every section — {@code baseVertex} on the indirect-draw command
+     * shifts the reads into that section's block of the mega VBO.
+     */
+    public static int[] buildQuadIndexPattern(int maxQuads) {
+        int[] idx = new int[maxQuads * INDICES_PER_QUAD];
+        for (int q = 0; q < maxQuads; q++) {
+            int v0 = q * VERTICES_PER_QUAD;
+            int v1 = v0 + 1;
+            int v2 = v0 + 2;
+            int v3 = v0 + 3;
+            int o = q * INDICES_PER_QUAD;
+            idx[o]     = v0;
+            idx[o + 1] = v1;
+            idx[o + 2] = v2;
+            idx[o + 3] = v0;
+            idx[o + 4] = v2;
+            idx[o + 5] = v3;
+        }
+        return idx;
+    }
 }

@@ -41,6 +41,16 @@ public final class MeshBuilder implements MeshOutput {
         return view.asReadOnlyBuffer();
     }
 
+    /** Copies accumulated vertex bytes into a freshly-allocated {@code byte[]}. */
+    public byte[] toByteArray() {
+        int len = buffer.position();
+        byte[] out = new byte[len];
+        ByteBuffer view = buffer.duplicate();
+        view.position(0).limit(len);
+        view.get(out);
+        return out;
+    }
+
     public void clear() {
         buffer.clear();
         quadCount = 0;
