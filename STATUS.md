@@ -5,10 +5,9 @@ _Last updated 2026-04-19 (v0.1.0-alpha)._
 ## Summary
 
 Farsight is an MIT-licensed Minecraft Fabric mod aiming at extreme render
-distances via a sparse voxel octree and GPU-driven rendering, in the spirit of
-[Voxy](https://github.com/MCRcortex/voxy) and Distant Horizons. It is a
-ground-up implementation — no Voxy source is copied; only the high-level
-architecture is referenced.
+distances via a sparse voxel octree and GPU-driven rendering. Independent
+implementation; inspired by techniques described in voxel-rendering
+literature.
 
 This session completed Phases 0–6 and ships an alpha jar that builds, loads
 the core runtime, and registers client commands, but does **not** yet draw

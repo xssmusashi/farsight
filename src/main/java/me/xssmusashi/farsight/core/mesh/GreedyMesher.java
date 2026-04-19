@@ -17,8 +17,8 @@ import me.xssmusashi.farsight.core.voxel.VoxelEntry;
  * no face. This preserves correctness without a second pass per side.</p>
  *
  * <p>Algorithm reference: Mikola Lysenko, "Meshing in a Minecraft Game"
- * (0fps.net). Architecture inspired by MCRcortex/voxy (LGPL-3) — independent
- * implementation, MIT-licensed.</p>
+ * (0fps.net). Independent MIT-licensed implementation, inspired by techniques
+ * described in voxel-rendering literature.</p>
  */
 public final class GreedyMesher {
 

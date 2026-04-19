@@ -11,8 +11,8 @@ import me.xssmusashi.farsight.core.voxel.VoxelEntry;
  * unchanged (biome, light, flags, normal preserved from a representative
  * voxel), not averaged.</p>
  *
- * <p>Architecture inspired by MCRcortex/voxy (LGPL-3) — independent
- * implementation.</p>
+ * <p>Independent implementation; inspired by techniques described in
+ * voxel-rendering literature.</p>
  */
 public final class Downsampler {
     private Downsampler() {}
