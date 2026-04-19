@@ -41,7 +41,7 @@ public final class LmdbStorage implements AutoCloseable {
         }
         this.env = Env.create()
                 .setMapSize(mapSize)
-                .setMaxDbs(1)
+                .setMaxDbs(4)
                 .setMaxReaders(128)
                 .open(directory.toFile(), EnvFlags.MDB_NOTLS, EnvFlags.MDB_NOSYNC);
         this.sections = env.openDbi("sections", DbiFlags.MDB_CREATE);

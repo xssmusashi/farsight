@@ -59,7 +59,8 @@ in quads is the relevant win.
 - [x] Phase 1 — Voxel data model + LMDB storage
 - [x] Phase 2 — LoD downsampling (majority-vote, priority-tie-break, intra-section mip pyramid)
 - [x] Phase 3 — Greedy mesher (Mikola Lysenko) + naive A/B baseline + MeshBuilder vertex packer
-- [ ] Phase 4 — Chunk ingest pipeline
+- [x] Phase 4 — Ingest pipeline (ChunkSnapshot → Section → LodPyramid → Greedy mesh → LMDB) with ForkJoinPool + `/farsight stats` / `/farsight rebuild` command scaffolding
+- [ ] Phase 5 — GPU render pipeline
 - [ ] Phase 2 — LoD downsampling
 - [ ] Phase 3 — Greedy mesher
 - [ ] Phase 4 — Chunk ingest pipeline
