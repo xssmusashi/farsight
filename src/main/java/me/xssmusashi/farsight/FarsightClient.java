@@ -1,5 +1,6 @@
 package me.xssmusashi.farsight;
 
+import me.xssmusashi.farsight.boot.ModuleUnlocker;
 import me.xssmusashi.farsight.commands.FarsightCommand;
 import me.xssmusashi.farsight.config.FarsightConfig;
 import me.xssmusashi.farsight.ingest.ChunkIngestor;
@@ -22,9 +23,14 @@ public final class FarsightClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Must run BEFORE any lmdbjava class is referenced — touching
+        // org.lmdbjava.ByteBufferProxy triggers its <clinit> which uses
+        // reflection into java.nio.Buffer.address.
+        boolean unlocked = ModuleUnlocker.unlockJavaNio();
         CONFIG = FarsightConfig.loadOrCreateDefault();
-        LOGGER.info("Farsight {} initialising — lodRenderDistance={}, compute culling={}",
-            MOD_ID, CONFIG.lodRenderDistance, CONFIG.useComputeCulling);
+        LOGGER.info("Farsight {} initialising — lodRenderDistance={}, compute culling={}, moduleUnlocker={}",
+            MOD_ID, CONFIG.lodRenderDistance, CONFIG.useComputeCulling,
+            unlocked ? "ok" : "FAILED (lmdbjava will need --add-opens)");
         FarsightCommand.register(ACTIVE_INGESTOR::get);
         WorldLifecycle.register();
         ChunkObserver.register();
