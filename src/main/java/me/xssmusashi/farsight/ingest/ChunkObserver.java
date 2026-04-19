@@ -33,6 +33,11 @@ public final class ChunkObserver {
     private static void onChunkLoad(ClientLevel level, LevelChunk chunk) {
         me.xssmusashi.farsight.ingest.ChunkIngestor ingestor = FarsightClient.ACTIVE_INGESTOR.get();
         if (ingestor == null) return;
+        // Don't even build a snapshot if the pool is backed up — avoids the
+        // 256 KB-per-section long[] allocation churning the render thread.
+        if (ingestor.pendingCount() >= me.xssmusashi.farsight.ingest.ChunkIngestor.MAX_PENDING) {
+            return;
+        }
 
         try {
             ChunkPos pos = chunk.getPos();
@@ -63,6 +68,12 @@ public final class ChunkObserver {
 
                 SectionKey key = new SectionKey(dim, chunkX, sectionY, chunkZ, 0);
                 ingestor.submit(new ChunkSnapshot(key, voxels));
+
+                // If one chunk filled the pool, stop extracting more sections
+                // from it — let the pool drain.
+                if (ingestor.pendingCount() >= me.xssmusashi.farsight.ingest.ChunkIngestor.MAX_PENDING) {
+                    break;
+                }
             }
         } catch (Throwable t) {
             FarsightClient.LOGGER.warn("chunk ingest failed for {}", chunk.getPos(), t);

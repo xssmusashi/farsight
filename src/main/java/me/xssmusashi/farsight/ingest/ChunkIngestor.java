@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Async pipeline: chunk snapshot → Section → LoD pyramid → greedy mesh
@@ -25,10 +26,17 @@ import java.util.concurrent.ForkJoinPool;
 public final class ChunkIngestor implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(ChunkIngestor.class);
 
+    /** Keep the in-flight task count low — each queued task holds a {@link Section}
+     *  plus mesh buffers (~100-200 KB) and world join fires hundreds of chunks
+     *  at once. 64 × ~150 KB ≈ 10 MB peak, well under any JVM heap budget. */
+    public static final int MAX_PENDING = 64;
+
     private final SectionStore storage;
     private final ForkJoinPool pool;
     private final IngestStats stats;
     private final boolean ownsPool;
+    private final AtomicInteger pending = new AtomicInteger();
+    private final AtomicInteger dropped = new AtomicInteger();
 
     public ChunkIngestor(SectionStore storage) {
         this(storage, defaultPool(), true);
@@ -47,13 +55,25 @@ public final class ChunkIngestor implements AutoCloseable {
     }
 
     public IngestStats stats() { return stats; }
+    public int pendingCount() { return pending.get(); }
+    public int droppedCount() { return dropped.get(); }
 
     /**
-     * Submits a snapshot for processing. Returns a future that completes once
-     * the snapshot is persisted (and optionally meshed). Errors are recorded
-     * in {@link #stats()}.
+     * Submits a snapshot for processing. If the pool already has
+     * {@link #MAX_PENDING} tasks in flight, drops the snapshot and
+     * increments {@link #droppedCount()} — world-join bursts must not
+     * push the JVM into OOM.
      */
     public CompletableFuture<Void> submit(ChunkSnapshot snapshot) {
+        if (pending.get() >= MAX_PENDING) {
+            int d = dropped.incrementAndGet();
+            if ((d & 0xFF) == 0) {   // log every 256 drops
+                LOG.info("ingest backpressure: dropped {} sections total (pending={}/{})",
+                    d, pending.get(), MAX_PENDING);
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+        pending.incrementAndGet();
         return CompletableFuture.runAsync(() -> {
             try {
                 process(snapshot);
@@ -61,6 +81,8 @@ public final class ChunkIngestor implements AutoCloseable {
                 stats.errors.incrementAndGet();
                 LOG.error("ingest failed for {}", snapshot.key(), e);
                 throw e;
+            } finally {
+                pending.decrementAndGet();
             }
         }, pool);
     }

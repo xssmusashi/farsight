@@ -41,7 +41,9 @@ public final class FarsightCommand {
     }
 
     private static int runStats(CommandContext<FabricClientCommandSource> ctx, ChunkIngestor ingestor) {
-        String summary = ingestor == null ? "<no active session>" : ingestor.stats().summary();
+        String summary = ingestor == null
+            ? "<no active session>"
+            : ingestor.stats().summaryWith(ingestor.pendingCount(), ingestor.droppedCount());
         ctx.getSource().sendFeedback(Component.literal("[Farsight] " + summary));
         return 1;
     }

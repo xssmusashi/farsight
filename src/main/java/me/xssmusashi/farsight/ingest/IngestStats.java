@@ -16,4 +16,8 @@ public final class IngestStats {
             quadsProduced.get(),
             errors.get());
     }
+
+    public String summaryWith(int pending, int dropped) {
+        return summary() + " pending=" + pending + " dropped=" + dropped;
+    }
 }
