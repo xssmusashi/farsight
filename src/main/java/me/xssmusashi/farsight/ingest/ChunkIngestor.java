@@ -3,10 +3,10 @@ package me.xssmusashi.farsight.ingest;
 import me.xssmusashi.farsight.core.lod.LodPyramid;
 import me.xssmusashi.farsight.core.mesh.GreedyMesher;
 import me.xssmusashi.farsight.core.mesh.MeshBuilder;
-import me.xssmusashi.farsight.core.storage.LmdbStorage;
 import me.xssmusashi.farsight.core.storage.MeshBlob;
 import me.xssmusashi.farsight.core.storage.SectionCodec;
 import me.xssmusashi.farsight.core.storage.SectionKey;
+import me.xssmusashi.farsight.core.storage.SectionStore;
 import me.xssmusashi.farsight.core.voxel.Section;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,16 +25,16 @@ import java.util.concurrent.ForkJoinPool;
 public final class ChunkIngestor implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(ChunkIngestor.class);
 
-    private final LmdbStorage storage;
+    private final SectionStore storage;
     private final ForkJoinPool pool;
     private final IngestStats stats;
     private final boolean ownsPool;
 
-    public ChunkIngestor(LmdbStorage storage) {
+    public ChunkIngestor(SectionStore storage) {
         this(storage, defaultPool(), true);
     }
 
-    public ChunkIngestor(LmdbStorage storage, ForkJoinPool pool, boolean ownsPool) {
+    public ChunkIngestor(SectionStore storage, ForkJoinPool pool, boolean ownsPool) {
         this.storage = storage;
         this.pool = pool;
         this.ownsPool = ownsPool;

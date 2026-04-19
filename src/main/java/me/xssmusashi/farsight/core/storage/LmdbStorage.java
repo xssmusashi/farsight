@@ -23,7 +23,7 @@ import static java.nio.ByteBuffer.allocateDirect;
  * single writer. The class does not serialize writers — callers must ensure
  * only one writer thread at a time, or hold their own lock.</p>
  */
-public final class LmdbStorage implements AutoCloseable {
+public final class LmdbStorage implements SectionStore {
     public static final long DEFAULT_MAP_SIZE = 1L << 36; // 64 GB virtual address reservation
 
     private final Env<ByteBuffer> env;

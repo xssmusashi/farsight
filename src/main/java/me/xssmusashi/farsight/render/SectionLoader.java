@@ -1,9 +1,9 @@
 package me.xssmusashi.farsight.render;
 
 import me.xssmusashi.farsight.FarsightClient;
-import me.xssmusashi.farsight.core.storage.LmdbStorage;
 import me.xssmusashi.farsight.core.storage.MeshBlob;
 import me.xssmusashi.farsight.core.storage.SectionKey;
+import me.xssmusashi.farsight.core.storage.SectionStore;
 import me.xssmusashi.farsight.core.voxel.Section;
 import me.xssmusashi.farsight.ingest.PendingSections;
 import me.xssmusashi.farsight.world.WorldLifecycle;
@@ -40,7 +40,7 @@ public final class SectionLoader {
     public void tick() {
         WorldSession session = WorldLifecycle.currentSession();
         if (session == null) return;
-        LmdbStorage storage = session.storage();
+        SectionStore storage = session.storage();
         for (int i = 0; i < maxLoadsPerFrame; i++) {
             SectionKey key = PendingSections.poll();
             if (key == null) return;
@@ -52,7 +52,7 @@ public final class SectionLoader {
         }
     }
 
-    private void loadOne(LmdbStorage storage, SectionKey key) {
+    private void loadOne(SectionStore storage, SectionKey key) {
         byte[] raw = storage.getMesh(key);
         if (raw == null) return;
         MeshBlob blob = MeshBlob.decode(raw);
