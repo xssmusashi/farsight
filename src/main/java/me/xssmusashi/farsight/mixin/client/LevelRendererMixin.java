@@ -43,6 +43,12 @@ public abstract class LevelRendererMixin {
         if (!farsight$dumpedCameraState) {
             farsight$dumpedCameraState = true;
             farsight$dumpCameraRenderState(cameraRenderState);
+            FarsightClient.LOGGER.info("renderLevel arg projection m00={} m11={} m22={} m33={} m23={} m32={}",
+                projectionMatrix.m00(), projectionMatrix.m11(), projectionMatrix.m22(),
+                projectionMatrix.m33(), projectionMatrix.m23(), projectionMatrix.m32());
+            FarsightClient.LOGGER.info("composed viewProj m00={} m11={} m22={} m33={} m03={} m13={} m23={}",
+                viewProj.m00(), viewProj.m11(), viewProj.m22(), viewProj.m33(),
+                viewProj.m03(), viewProj.m13(), viewProj.m23());
         }
 
         FarsightRenderHook.onFrame();

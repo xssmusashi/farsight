@@ -112,13 +112,21 @@ public final class FarsightRenderer implements AutoCloseable {
         loader.tick();
     }
 
+    private long frameCounter = 0L;
+
     /**
      * Iterates the live section registry and issues one glDrawElementsBaseVertex
      * per section. Ugly but GL-3.3-safe.
      */
     public void drawFrame(Matrix4f viewProjection) {
         if (!initialised) return;
-        if (registry.liveCount() == 0) return;
+        int live = registry.liveCount();
+        frameCounter++;
+        if ((frameCounter % 120L) == 0L) {
+            FarsightClient.LOGGER.info("Farsight draw: live sections={}, pending={}",
+                live, me.xssmusashi.farsight.ingest.PendingSections.QUEUE.size());
+        }
+        if (live == 0) return;
 
         float[] matArray = new float[16];
         viewProjection.get(matArray);
@@ -129,6 +137,7 @@ public final class FarsightRenderer implements AutoCloseable {
         GL33.glBindVertexArray(vao);
 
         SectionRegistry.Slot[] snap = registry.snapshot();
+        int drawCalls = 0;
         for (int i = 0; i < snap.length; i++) {
             SectionRegistry.Slot s = snap[i];
             if (s == null) continue;
@@ -140,9 +149,16 @@ public final class FarsightRenderer implements AutoCloseable {
                 GL33.GL_UNSIGNED_INT,
                 0L,
                 s.baseVertex());
+            drawCalls++;
         }
 
         GL33.glBindVertexArray(0);
+
+        int err = GL33.glGetError();
+        if (err != GL33.GL_NO_ERROR && (frameCounter % 60L) == 0L) {
+            FarsightClient.LOGGER.warn("GL error after draw frame: 0x{} (draws={})",
+                Integer.toHexString(err), drawCalls);
+        }
     }
 
     public boolean isInitialised()          { return initialised; }
