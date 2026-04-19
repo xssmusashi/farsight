@@ -108,7 +108,9 @@ public final class FarsightRenderer implements AutoCloseable {
         if (pipelineWatcher.tick()) {
             refreshIrisAdapter();
         }
-        irisAdapter.bindForDraw();
+        // Temporarily skip Iris FBO binding while debugging geometry visibility —
+        // draw into whatever MC/Sodium has bound so we share the main backbuffer.
+        // irisAdapter.bindForDraw();
         loader.tick();
     }
 
@@ -122,14 +124,40 @@ public final class FarsightRenderer implements AutoCloseable {
         if (!initialised) return;
         int live = registry.liveCount();
         frameCounter++;
-        if ((frameCounter % 120L) == 0L) {
-            FarsightClient.LOGGER.info("Farsight draw: live sections={}, pending={}",
-                live, me.xssmusashi.farsight.ingest.PendingSections.QUEUE.size());
+
+        if ((frameCounter % 300L) == 0L) {
+            float[] m = new float[16];
+            viewProjection.get(m);
+            FarsightClient.LOGGER.info(
+                "Farsight draw f={} live={}: viewProj row0=[{},{},{},{}] row3=[{},{},{},{}]",
+                frameCounter, live,
+                m[0], m[4], m[8], m[12],
+                m[3], m[7], m[11], m[15]);
+            // Sample first registered slot's origin to confirm CPU state
+            SectionRegistry.Slot[] snap2 = registry.snapshot();
+            for (SectionRegistry.Slot s : snap2) {
+                if (s != null) {
+                    FarsightClient.LOGGER.info(
+                        "  sample slot: origin=({},{},{}) scale={} baseVertex={} indexCount={}",
+                        s.originX(), s.originY(), s.originZ(), s.voxelScale(),
+                        s.baseVertex(), s.indexCount());
+                    break;
+                }
+            }
         }
+
         if (live == 0) return;
 
         float[] matArray = new float[16];
         viewProjection.get(matArray);
+
+        // DEBUG: force geometry on top of everything, both sides visible.
+        // Trade correctness for visibility — revert once pixels appear.
+        GL33.glDisable(GL33.GL_DEPTH_TEST);
+        GL33.glDisable(GL33.GL_CULL_FACE);
+        GL33.glDisable(GL33.GL_BLEND);
+        GL33.glDepthMask(true);
+        GL33.glColorMask(true, true, true, true);
 
         sectionProgram.use();
         GL33.glUniformMatrix4fv(uViewProj, false, matArray);
@@ -153,11 +181,18 @@ public final class FarsightRenderer implements AutoCloseable {
         }
 
         GL33.glBindVertexArray(0);
+        GL33.glUseProgram(0);
+
+        // Restore defaults MC may have had before our draw
+        GL33.glEnable(GL33.GL_DEPTH_TEST);
+        GL33.glEnable(GL33.GL_CULL_FACE);
 
         int err = GL33.glGetError();
-        if (err != GL33.GL_NO_ERROR && (frameCounter % 60L) == 0L) {
-            FarsightClient.LOGGER.warn("GL error after draw frame: 0x{} (draws={})",
-                Integer.toHexString(err), drawCalls);
+        if (err != GL33.GL_NO_ERROR) {
+            if ((frameCounter % 60L) == 0L) {
+                FarsightClient.LOGGER.warn("GL error after draw frame: 0x{} (draws={})",
+                    Integer.toHexString(err), drawCalls);
+            }
         }
     }
 

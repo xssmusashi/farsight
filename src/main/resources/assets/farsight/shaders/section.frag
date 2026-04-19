@@ -29,13 +29,7 @@ float faceLight(uint face) {
 }
 
 void main() {
+    // DEBUG: saturated high-chroma colour so any visible pixel is obvious.
     vec3 base = hashColor(v_stateId);
-    float ao = float(v_ao) / 255.0;
-    vec3 lit = base * faceLight(v_faceIdx) * (0.5 + 0.5 * ao);
-
-    float d = length(v_worldPos - u_cameraPos);
-    float fogT = clamp((d - u_fogStart) / max(1.0, (u_fogEnd - u_fogStart)), 0.0, 1.0);
-    vec3 finalColor = mix(lit, u_fogColor, fogT);
-
-    fragColor = vec4(finalColor, 1.0);
+    fragColor = vec4(max(base, vec3(0.3)) * faceLight(v_faceIdx), 1.0);
 }
