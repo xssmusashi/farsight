@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "farsight",
+  "version": "${version}",
+  "name": "Farsight",
+  "description": "Extreme render-distance mod — sparse voxel octree LoDs with GPU-driven rendering.",
+  "authors": [
+    "xssmusashi"
+  ],
+  "contact": {
+    "sources": "https://github.com/xssmusashi/farsight",
+    "issues": "https://github.com/xssmusashi/farsight/issues"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "me.xssmusashi.farsight.FarsightClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "farsight.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "minecraft": ["~26.1"],
+    "fabricloader": ">=0.18.0",
+    "fabric-api": ">=0.145.0",
+    "java": ">=25"
+  },
+  "accessWidener": "farsight.accesswidener"
+}

@@ -1,0 +1,105 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "1.15-SNAPSHOT"
+    id 'java'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
+}
+
+loom {
+    accessWidenerPath = file("src/main/resources/farsight.accesswidener")
+}
+
+sourceSets {
+    jmh {
+        java.srcDir 'src/jmh/java'
+        resources.srcDir 'src/jmh/resources'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    jmhImplementation.extendsFrom implementation
+    jmhRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Storage
+    implementation "org.lmdbjava:lmdbjava:${project.lmdbjava_version}"
+    include "org.lmdbjava:lmdbjava:${project.lmdbjava_version}"
+    implementation "com.github.luben:zstd-jni:${project.zstd_jni_version}"
+    include "com.github.luben:zstd-jni:${project.zstd_jni_version}"
+
+    // Concurrency
+    implementation "org.jctools:jctools-core:${project.jctools_version}"
+    include "org.jctools:jctools-core:${project.jctools_version}"
+
+    // Tests
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+
+    // JMH (separate sourceset, does not touch Minecraft remap)
+    jmhImplementation "org.openjdk.jmh:jmh-core:${project.jmh_version}"
+    jmhAnnotationProcessor "org.openjdk.jmh:jmh-generator-annprocess:${project.jmh_version}"
+}
+
+def targetJavaVersion = 25
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = targetJavaVersion
+    it.options.deprecation = true
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    withSourcesJar()
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    from('LICENSE') {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+}
+
+tasks.register('jmh', JavaExec) {
+    group = 'benchmark'
+    description = 'Run JMH benchmarks'
+    classpath = sourceSets.jmh.runtimeClasspath
+    mainClass = 'org.openjdk.jmh.Main'
+    jvmArgs = ['-Xmx2g']
+    args '-f', '1', '-wi', '2', '-i', '3', '-w', '2s', '-r', '3s'
+}
