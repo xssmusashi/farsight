@@ -1,0 +1,51 @@
+#version 460 core
+// Template for shader-pack authors. Drop into
+//   <shaderpack>/shaders/farsight/gbuffers_farsight_lod.fsh
+//
+// Pack authors should write to Iris gbuffer attachments here rather than to
+// a single fragColor — that is what lets Iris's composite passes run on top.
+// The built-in fallback (this file's sibling, section.frag) writes a single
+// RGBA target because Farsight runs standalone by default.
+
+flat in uint v_stateId;
+flat in uint v_faceIdx;
+flat in uint v_ao;
+flat in uint v_biome;
+in vec3 v_worldPos;
+
+uniform vec3  u_cameraPos;
+uniform vec3  u_fogColor;
+uniform float u_fogStart;
+uniform float u_fogEnd;
+
+// colortex0 — albedo, colortex1 — normal, colortex2 — meta (ao, face, state), colortex3 — biome
+layout(location = 0) out vec4 gAlbedo;
+layout(location = 1) out vec4 gNormal;
+layout(location = 2) out vec4 gMeta;
+layout(location = 3) out vec4 gBiome;
+
+vec3 faceNormal(uint face) {
+    switch (int(face)) {
+        case 0: return vec3(-1.0,  0.0,  0.0);
+        case 1: return vec3( 1.0,  0.0,  0.0);
+        case 2: return vec3( 0.0, -1.0,  0.0);
+        case 3: return vec3( 0.0,  1.0,  0.0);
+        case 4: return vec3( 0.0,  0.0, -1.0);
+        case 5: return vec3( 0.0,  0.0,  1.0);
+        default: return vec3(0.0, 1.0, 0.0);
+    }
+}
+
+vec3 hashColor(uint id) {
+    float r = fract(float(id) * 0.61803398875);
+    float g = fract(float(id) * 0.32471795724);
+    float b = fract(float(id) * 0.73216813908);
+    return vec3(r, g, b);
+}
+
+void main() {
+    gAlbedo = vec4(hashColor(v_stateId), 1.0);
+    gNormal = vec4(faceNormal(v_faceIdx) * 0.5 + 0.5, 1.0);
+    gMeta   = vec4(float(v_ao) / 255.0, float(v_faceIdx) / 7.0, float(v_stateId % 256u) / 255.0, 1.0);
+    gBiome  = vec4(float(v_biome) / 4095.0, 0.0, 0.0, 1.0);
+}

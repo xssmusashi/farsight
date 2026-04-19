@@ -1,6 +1,6 @@
 # Farsight status
 
-_Last updated 2026-04-19 (v0.1.0-alpha)._
+_Last updated 2026-04-20 (v0.1.2-alpha)._
 
 ## Summary
 
@@ -22,12 +22,15 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 - [x] Phase 4 — Ingest pipeline (ChunkSnapshot → Section → LodPyramid → Greedy mesh → LMDB), ForkJoinPool, `/farsight stats` / `/farsight rebuild`
 - [x] Phase 5 — GPU scaffold (compiles). **No mixin into the render loop yet — does not draw pixels.**
 - [x] Phase 6 — GSON JSON config at `config/farsight.json`
-- [~] Phase 7 — partial: per-face AO, biome palette, `SectionNeighborhood` scaffold for LoD skirts, updated shaders. **Iris/Oculus compat and region file importer are still deferred** (Iris = multi-day scope, region importer = NBT parser + MC block mapping).
+- [~] Phase 7 — in progress:
+  - Done: per-face AO, biome palette, `SectionNeighborhood` scaffold for LoD skirts, updated shaders.
+  - Done: **Iris compat scaffolding** — reflective detection (no compile dependency), `IrisAdapter` sealed interface (`Inactive` + `IrisBacked` stub), `ShaderOverrides` for `gbuffers_farsight_lod.{vsh,fsh}` pack customization, shader-pack templates under `assets/farsight/shaders/compat/`. Renderer queries adapter on init and exposes `refreshIrisAdapter()` for hot-swap. **Actual gbuffer MRT writes + Iris FBO binding are TODO** — adapter returns no-op values until Iris's internal classes are wired, which is a multi-day effort and intentionally out of scope for this pass.
+  - Deferred: Region file importer (needs NBT parser + MC block mapping). Full Iris pipeline integration (gbuffer MRT, program injection). Cross-section LoD aggregation.
 
 ## What works
 
 - `./gradlew build` produces a loadable jar (`farsight-0.1.0-alpha.jar`).
-- 40 unit tests pass across voxel, palette, section, LMDB, LoD, mesher, AO, biome palette, ingest, config, shader resources.
+- 45 unit tests pass across voxel, palette, section, LMDB, LoD, mesher, AO, biome palette, ingest, config, shader resources, Iris compatibility probe, shader overrides.
 - Storage benchmarks exceed targets (see below).
 - Greedy mesher passes its ≥5× polygon-reduction gate on realistic heightmap terrain.
 - Client mod entrypoint logs init, loads config, registers `/farsight stats` and `/farsight rebuild` commands.
