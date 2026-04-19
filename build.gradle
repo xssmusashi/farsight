@@ -31,6 +31,13 @@ loom {
     accessWidenerPath = file("src/main/resources/farsight.accesswidener")
 }
 
+processResources {
+    inputs.property("version", project.version)
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
 sourceSets {
     jmh {
         java.srcDir 'src/jmh/java'
