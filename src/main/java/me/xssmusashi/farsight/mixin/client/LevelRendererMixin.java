@@ -49,28 +49,39 @@ public abstract class LevelRendererMixin {
     }
 
     /**
-     * Best-effort extraction of a view matrix from {@link CameraRenderState}.
-     * Scans declared fields reflectively for a {@link Matrix4f} / {@link Matrix4fc}
-     * and multiplies it against the incoming projection. Falls back to
-     * projection-only on failure (geometry will be misplaced but visible
-     * where the world happens to pass under the default view).
+     * Builds {@code projection × viewRotation × translate(-cameraPos)} — the
+     * transform MC applies around every {@code renderLevel} call. Both
+     * {@code viewRotationMatrix} and {@code pos} are fields on
+     * {@link CameraRenderState} (see {@code farsight$dumpCameraRenderState}
+     * output logged on the first frame). Reflection is used so Farsight does
+     * not need a compile-time dependency on internal MC class shape.
      */
     private static Matrix4f farsight$buildViewProj(CameraRenderState state, Matrix4fc projection) {
         Matrix4f result = new Matrix4f(projection);
         if (state == null) return result;
         try {
-            for (Field f : state.getClass().getDeclaredFields()) {
-                Class<?> t = f.getType();
-                if (t == Matrix4f.class || t == Matrix4fc.class) {
-                    f.setAccessible(true);
-                    Object v = f.get(state);
-                    if (v instanceof Matrix4fc m) {
-                        result.mul(m);
-                        return result;
-                    }
-                }
+            Class<?> c = state.getClass();
+
+            Field viewRotField = c.getDeclaredField("viewRotationMatrix");
+            viewRotField.setAccessible(true);
+            Object rot = viewRotField.get(state);
+            if (rot instanceof Matrix4fc m) {
+                result.mul(m);
             }
-        } catch (Throwable ignored) {}
+
+            Field posField = c.getDeclaredField("pos");
+            posField.setAccessible(true);
+            Object pos = posField.get(state);
+            if (pos != null) {
+                Class<?> pc = pos.getClass();
+                double px = pc.getField("x").getDouble(pos);
+                double py = pc.getField("y").getDouble(pos);
+                double pz = pc.getField("z").getDouble(pos);
+                result.translate((float) -px, (float) -py, (float) -pz);
+            }
+        } catch (Throwable t) {
+            FarsightClient.LOGGER.debug("view-proj build fallback: {}", t.toString());
+        }
         return result;
     }
 
