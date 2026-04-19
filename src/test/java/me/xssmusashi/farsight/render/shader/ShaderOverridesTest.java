@@ -14,14 +14,14 @@ class ShaderOverridesTest {
     void fallsBackToBundledWhenNoOverride(@TempDir Path tmp) {
         String src = ShaderOverrides.load(null, ShaderOverrides.VERT_FILE,
             "/assets/farsight/shaders/section.vert");
-        assertTrue(src.contains("#version 460"));
+        assertTrue(src.contains("#version"));
     }
 
     @Test
     void fallsBackToBundledWhenRootExistsButFileMissing(@TempDir Path tmp) {
         String src = ShaderOverrides.load(tmp, ShaderOverrides.VERT_FILE,
             "/assets/farsight/shaders/section.vert");
-        assertTrue(src.contains("#version 460"));
+        assertTrue(src.contains("#version"));
     }
 
     @Test

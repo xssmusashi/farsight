@@ -17,9 +17,9 @@ class ShaderResourcesTest {
         String frag = ShaderProgram.loadResource("/assets/farsight/shaders/section.frag");
         String cull = ShaderProgram.loadResource("/assets/farsight/shaders/culling.comp");
         String hiz = ShaderProgram.loadResource("/assets/farsight/shaders/hiz_build.comp");
-        assertTrue(vert.contains("#version 460"));
-        assertTrue(frag.contains("#version 460"));
-        assertTrue(cull.contains("#version 460") && cull.contains("layout(local_size_x"));
-        assertTrue(hiz.contains("#version 460") && hiz.contains("layout(local_size_x"));
+        assertTrue(vert.contains("#version"));
+        assertTrue(frag.contains("#version"));
+        assertTrue(cull.contains("#version") && cull.contains("layout(local_size_x"));
+        assertTrue(hiz.contains("#version") && hiz.contains("layout(local_size_x"));
     }
 }

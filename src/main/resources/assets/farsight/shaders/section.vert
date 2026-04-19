@@ -1,4 +1,4 @@
-#version 460 core
+#version 430 core
 #extension GL_ARB_shader_draw_parameters : require
 
 // Per-vertex packed data. Mega-VBO shared across all sections; baseVertex
@@ -29,25 +29,25 @@ flat out uint v_biome;
 out vec3 v_worldPos;
 
 void main() {
-    SectionRecord sec = sections[gl_BaseInstance];
+    SectionRecord sec = sections[gl_BaseInstanceARB];
     vec3 origin = sec.aabbMin.xyz;
     float voxelScale = sec.aabbMin.w;
 
-    uvec4 packed = vertices[gl_VertexID];
+    uvec4 packedData = vertices[gl_VertexID];
 
-    uint x = packed.x & 0xFFu;
-    uint y = (packed.x >> 8u) & 0xFFu;
-    uint z = (packed.x >> 16u) & 0xFFu;
-    uint face = (packed.x >> 24u) & 0x7u;
+    uint px = packedData.x & 0xFFu;
+    uint py = (packedData.x >> 8u) & 0xFFu;
+    uint pz = (packedData.x >> 16u) & 0xFFu;
+    uint pFace = (packedData.x >> 24u) & 0x7u;
 
-    vec3 local = vec3(x, y, z) * voxelScale;
+    vec3 local = vec3(px, py, pz) * voxelScale;
     vec3 world = origin + local;
 
     v_worldPos = world;
-    v_faceIdx = face;
-    v_stateId = packed.z & 0xFFFFFFu;
-    v_ao      = packed.y & 0xFFu;
-    v_biome   = packed.w & 0xFFFu;
+    v_faceIdx = pFace;
+    v_stateId = packedData.z & 0xFFFFFFu;
+    v_ao      = packedData.y & 0xFFu;
+    v_biome   = packedData.w & 0xFFFu;
 
     gl_Position = u_viewProj * vec4(world, 1.0);
 }

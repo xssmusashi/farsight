@@ -1,5 +1,6 @@
 package me.xssmusashi.farsight.core.storage;
 
+import org.lmdbjava.ByteBufferProxy;
 import org.lmdbjava.Dbi;
 import org.lmdbjava.DbiFlags;
 import org.lmdbjava.Env;
@@ -40,7 +41,10 @@ public final class LmdbStorage implements AutoCloseable {
         } catch (Exception e) {
             throw new RuntimeException("failed to create storage dir: " + directory, e);
         }
-        this.env = Env.create()
+        // PROXY_SAFE uses only public ByteBuffer API — no reflection into
+        // java.nio.Buffer.address, so it works on JDK 16+ without the
+        // `--add-opens java.base/java.nio=ALL-UNNAMED` launcher flag.
+        this.env = Env.create(ByteBufferProxy.PROXY_SAFE)
                 .setMapSize(mapSize)
                 .setMaxDbs(4)
                 .setMaxReaders(128)
