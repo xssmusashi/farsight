@@ -1,0 +1,104 @@
+#version 460 core
+
+// Frustum + Hi-Z occlusion cull. One thread per section. Writes surviving
+// sections' indirect-draw commands into a dense output buffer whose size is
+// tracked by an atomic counter.
+
+layout(local_size_x = 64) in;
+
+struct SectionRecord {
+    vec4 aabbMin;    // xyz min, w = base-vertex into the mega VBO
+    vec4 aabbMax;    // xyz max, w = index-count of this section's mesh
+};
+
+struct DrawElementsIndirectCommand {
+    uint count;
+    uint instanceCount;
+    uint firstIndex;
+    uint baseVertex;
+    uint baseInstance;
+};
+
+layout(std430, binding = 0) readonly buffer Sections    { SectionRecord sections[]; };
+layout(std430, binding = 1) writeonly buffer Commands   { DrawElementsIndirectCommand cmds[]; };
+layout(std430, binding = 2)             buffer CmdCount { uint drawCount; };
+
+layout(binding = 3) uniform sampler2D u_hiZ;
+
+uniform mat4  u_viewProj;
+uniform uint  u_sectionCount;
+uniform ivec2 u_hiZSize;
+
+bool frustumCullAABB(vec3 mn, vec3 mx) {
+    // Test 8 AABB corners in clip space; cull iff all 8 fall on the outside
+    // of any single plane.
+    vec4 c0 = u_viewProj * vec4(mn.x, mn.y, mn.z, 1.0);
+    vec4 c1 = u_viewProj * vec4(mx.x, mn.y, mn.z, 1.0);
+    vec4 c2 = u_viewProj * vec4(mn.x, mx.y, mn.z, 1.0);
+    vec4 c3 = u_viewProj * vec4(mx.x, mx.y, mn.z, 1.0);
+    vec4 c4 = u_viewProj * vec4(mn.x, mn.y, mx.z, 1.0);
+    vec4 c5 = u_viewProj * vec4(mx.x, mn.y, mx.z, 1.0);
+    vec4 c6 = u_viewProj * vec4(mn.x, mx.y, mx.z, 1.0);
+    vec4 c7 = u_viewProj * vec4(mx.x, mx.y, mx.z, 1.0);
+
+    int L = 0, R = 0, B = 0, T = 0, N = 0, F = 0;
+    #define TEST(c) \
+        if (c.x < -c.w) L++; if (c.x > c.w) R++; \
+        if (c.y < -c.w) B++; if (c.y > c.w) T++; \
+        if (c.z < -c.w) N++; if (c.z > c.w) F++;
+    TEST(c0) TEST(c1) TEST(c2) TEST(c3)
+    TEST(c4) TEST(c5) TEST(c6) TEST(c7)
+    #undef TEST
+    return !(L == 8 || R == 8 || B == 8 || T == 8 || N == 8 || F == 8);
+}
+
+bool hiZOccluded(vec3 mn, vec3 mx) {
+    // Project AABB min-Z corner conservatively; compare against max-depth in
+    // a mip level sized to the screen-space extent. Reads Hi-Z via sampler.
+    vec4 corners[8];
+    corners[0] = u_viewProj * vec4(mn.x, mn.y, mn.z, 1.0);
+    corners[1] = u_viewProj * vec4(mx.x, mn.y, mn.z, 1.0);
+    corners[2] = u_viewProj * vec4(mn.x, mx.y, mn.z, 1.0);
+    corners[3] = u_viewProj * vec4(mx.x, mx.y, mn.z, 1.0);
+    corners[4] = u_viewProj * vec4(mn.x, mn.y, mx.z, 1.0);
+    corners[5] = u_viewProj * vec4(mx.x, mn.y, mx.z, 1.0);
+    corners[6] = u_viewProj * vec4(mn.x, mx.y, mx.z, 1.0);
+    corners[7] = u_viewProj * vec4(mx.x, mx.y, mx.z, 1.0);
+
+    vec2 minUv = vec2( 1.0,  1.0);
+    vec2 maxUv = vec2(-1.0, -1.0);
+    float minZ = 1.0;
+    for (int i = 0; i < 8; i++) {
+        vec3 ndc = corners[i].xyz / max(corners[i].w, 1e-5);
+        minUv = min(minUv, ndc.xy);
+        maxUv = max(maxUv, ndc.xy);
+        minZ  = min(minZ, ndc.z);
+    }
+    if (minZ < 0.0) return false;  // AABB straddles near plane, assume visible
+
+    vec2 uvMin = clamp(minUv * 0.5 + 0.5, 0.0, 1.0);
+    vec2 uvMax = clamp(maxUv * 0.5 + 0.5, 0.0, 1.0);
+    float w = max(uvMax.x - uvMin.x, uvMax.y - uvMin.y) * float(u_hiZSize.x);
+    float lod = clamp(log2(max(1.0, w)), 0.0, 10.0);
+    float depth = textureLod(u_hiZ, (uvMin + uvMax) * 0.5, lod).r;
+    return minZ * 0.5 + 0.5 > depth + 1e-4;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= u_sectionCount) return;
+
+    SectionRecord sec = sections[idx];
+    if (!frustumCullAABB(sec.aabbMin.xyz, sec.aabbMax.xyz)) return;
+    if (hiZOccluded(sec.aabbMin.xyz, sec.aabbMax.xyz))      return;
+
+    uint indexCount = floatBitsToUint(sec.aabbMax.w);
+    uint baseVert   = floatBitsToUint(sec.aabbMin.w);
+
+    uint slot = atomicAdd(drawCount, 1u);
+    cmds[slot].count         = indexCount;
+    cmds[slot].instanceCount = 1u;
+    cmds[slot].firstIndex    = 0u;
+    cmds[slot].baseVertex    = baseVert;
+    cmds[slot].baseInstance  = idx;
+}

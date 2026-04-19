@@ -1,0 +1,27 @@
+#version 460 core
+
+// Hi-Z depth pyramid construction. Each thread emits a single texel of the
+// destination mip by max-reducing a 2×2 footprint of the source mip. Assumes
+// a reverse-depth mapping where larger values are farther — hence `max`.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D u_src;
+layout(binding = 1, r32f) uniform writeonly image2D u_dst;
+
+uniform ivec2 u_srcSize;
+uniform ivec2 u_dstSize;
+
+void main() {
+    ivec2 dst = ivec2(gl_GlobalInvocationID.xy);
+    if (dst.x >= u_dstSize.x || dst.y >= u_dstSize.y) return;
+
+    ivec2 src = dst * 2;
+    float d00 = texelFetch(u_src, src + ivec2(0, 0), 0).r;
+    float d10 = texelFetch(u_src, min(src + ivec2(1, 0), u_srcSize - 1), 0).r;
+    float d01 = texelFetch(u_src, min(src + ivec2(0, 1), u_srcSize - 1), 0).r;
+    float d11 = texelFetch(u_src, min(src + ivec2(1, 1), u_srcSize - 1), 0).r;
+
+    float m = max(max(d00, d10), max(d01, d11));
+    imageStore(u_dst, dst, vec4(m));
+}

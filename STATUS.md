@@ -60,7 +60,8 @@ in quads is the relevant win.
 - [x] Phase 2 — LoD downsampling (majority-vote, priority-tie-break, intra-section mip pyramid)
 - [x] Phase 3 — Greedy mesher (Mikola Lysenko) + naive A/B baseline + MeshBuilder vertex packer
 - [x] Phase 4 — Ingest pipeline (ChunkSnapshot → Section → LodPyramid → Greedy mesh → LMDB) with ForkJoinPool + `/farsight stats` / `/farsight rebuild` command scaffolding
-- [ ] Phase 5 — GPU render pipeline
+- [x] Phase 5 — GPU render scaffold (shaders + Java classes compile). **No mixin into Minecraft's render loop yet**, so the renderer does not actually draw pixels. Compiles-and-loads-without-crash only — visual verification is the next session's job.
+- [ ] Phase 6 — Config + polish
 - [ ] Phase 2 — LoD downsampling
 - [ ] Phase 3 — Greedy mesher
 - [ ] Phase 4 — Chunk ingest pipeline
