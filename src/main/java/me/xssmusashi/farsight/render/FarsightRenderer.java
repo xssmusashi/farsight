@@ -156,8 +156,19 @@ public final class FarsightRenderer implements AutoCloseable {
         GL33.glDisable(GL33.GL_DEPTH_TEST);
         GL33.glDisable(GL33.GL_CULL_FACE);
         GL33.glDisable(GL33.GL_BLEND);
+        GL33.glDisable(GL33.GL_SCISSOR_TEST);
+        GL33.glDisable(GL33.GL_STENCIL_TEST);
         GL33.glDepthMask(true);
         GL33.glColorMask(true, true, true, true);
+
+        if ((frameCounter % 300L) == 0L) {
+            int[] vp = new int[4];
+            GL33.glGetIntegerv(GL33.GL_VIEWPORT, vp);
+            int currentFbo = GL33.glGetInteger(GL33.GL_DRAW_FRAMEBUFFER_BINDING);
+            int currentProgram = GL33.glGetInteger(GL33.GL_CURRENT_PROGRAM);
+            FarsightClient.LOGGER.info("GL state before draw: viewport=[{},{},{},{}] drawFbo={} prevProgram={}",
+                vp[0], vp[1], vp[2], vp[3], currentFbo, currentProgram);
+        }
 
         sectionProgram.use();
         GL33.glUniformMatrix4fv(uViewProj, false, matArray);

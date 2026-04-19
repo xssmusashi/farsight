@@ -24,7 +24,7 @@ public abstract class LevelRendererMixin {
 
     private static boolean farsight$dumpedCameraState = false;
 
-    @Inject(method = "renderLevel", at = @At("HEAD"), require = 0)
+    @Inject(method = "renderLevel", at = @At("RETURN"), require = 0)
     private void farsight$onRenderLevel(
             GraphicsResourceAllocator allocator,
             DeltaTracker tickCounter,
