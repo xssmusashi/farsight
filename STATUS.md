@@ -22,19 +22,19 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 - [x] Phase 4 — Ingest pipeline (ChunkSnapshot → Section → LodPyramid → Greedy mesh → LMDB), ForkJoinPool, `/farsight stats` / `/farsight rebuild`
 - [x] Phase 5 — GPU scaffold (compiles). **No mixin into the render loop yet — does not draw pixels.**
 - [x] Phase 6 — GSON JSON config at `config/farsight.json`
-- [ ] Phase 7 — Iris/Oculus shader pack compat, cross-section LoD, biome coloring, AO
+- [~] Phase 7 — partial: per-face AO, biome palette, `SectionNeighborhood` scaffold for LoD skirts, updated shaders. **Iris/Oculus compat and region file importer are still deferred** (Iris = multi-day scope, region importer = NBT parser + MC block mapping).
 
 ## What works
 
 - `./gradlew build` produces a loadable jar (`farsight-0.1.0-alpha.jar`).
-- 33 unit tests pass across voxel, palette, section, LMDB, LoD, mesher, ingest, config, shader resources.
+- 40 unit tests pass across voxel, palette, section, LMDB, LoD, mesher, AO, biome palette, ingest, config, shader resources.
 - Storage benchmarks exceed targets (see below).
 - Greedy mesher passes its ≥5× polygon-reduction gate on realistic heightmap terrain.
 - Client mod entrypoint logs init, loads config, registers `/farsight stats` and `/farsight rebuild` commands.
 
 ## What does not
 
-- **The renderer does not actually render.** `FarsightRenderer` exists but is never instantiated by a mixin into Minecraft's render pipeline.
+- **The renderer does not actually render.** `FarsightRenderer` exists but is never instantiated by a mixin into Minecraft's render pipeline. AO + biome shader logic is ready but is not yet hit by real pixels.
 - **Minecraft chunk data is never captured.** Ingest pipeline is end-to-end testable with synthetic snapshots, but there is no mixin/event hook that turns real `LevelChunk` data into `ChunkSnapshot`.
 - **Cross-section LoD aggregation** (stitching 8 adjacent native sections into one level-1 section, and so on up the tree) is not implemented. Only intra-section mip pyramids exist.
 - **Mesh persistence** is not done — meshes are built on ingest but not stored; Phase 5 would need them on disk.

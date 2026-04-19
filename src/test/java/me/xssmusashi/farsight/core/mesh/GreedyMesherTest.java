@@ -132,6 +132,20 @@ class GreedyMesherTest {
         assertEquals(6 * MeshFormat.QUAD_BYTES, mb.vertexByteCount());
     }
 
+    @Test
+    void meshBuilderWithSectionContextProducesSameQuadCount() {
+        Section s = new Section();
+        for (int i = 0; i < Section.VOLUME; i++) s.setByIndex(i, STONE);
+        long[] voxels = new long[Section.VOLUME];
+        for (int i = 0; i < Section.VOLUME; i++) voxels[i] = s.getByIndex(i);
+
+        MeshBuilder mb = new MeshBuilder().sectionContext(voxels);
+        int q = new GreedyMesher().mesh(s, mb);
+        assertEquals(6, q);
+        // Same vertex byte count regardless of AO/biome, since format is fixed-width
+        assertEquals(6 * MeshFormat.QUAD_BYTES, mb.vertexByteCount());
+    }
+
     /**
      * Realistic Minecraft-style terrain — plateaus of uniform height broken up
      * by a few step transitions, which is how real chunks look. Low-frequency

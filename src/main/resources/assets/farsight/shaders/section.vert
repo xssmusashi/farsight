@@ -1,18 +1,17 @@
 #version 460 core
 
-// Packed vertex data is read via SSBO + gl_VertexID — matches the bindless
-// MDI draw path. Layout must stay in sync with me.xssmusashi.farsight.core
-// .mesh.MeshFormat (16 bytes / uvec4 per vertex).
 layout(std430, binding = 0) readonly buffer VertexData {
     uvec4 vertices[];
 };
 
 uniform mat4 u_viewProj;
-uniform ivec3 u_sectionOrigin;    // world-space origin of the current section
-uniform float u_voxelScale;       // native = 1.0; LoD level L = 2^L
+uniform ivec3 u_sectionOrigin;
+uniform float u_voxelScale;
 
 flat out uint v_stateId;
 flat out uint v_faceIdx;
+flat out uint v_ao;
+flat out uint v_biome;
 out vec3 v_worldPos;
 
 void main() {
@@ -29,6 +28,8 @@ void main() {
     v_worldPos = world;
     v_faceIdx = face;
     v_stateId = packed.z & 0xFFFFFFu;
+    v_ao      = packed.y & 0xFFu;
+    v_biome   = packed.w & 0xFFFu;
 
     gl_Position = u_viewProj * vec4(world, 1.0);
 }
