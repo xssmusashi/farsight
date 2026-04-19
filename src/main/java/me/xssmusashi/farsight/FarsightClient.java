@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class FarsightClient implements ClientModInitializer {
-    public static final String MOD_ID = "farsight";
+    public static final String MOD_ID = "xssm_farsight";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     /** Current active ingestor — populated on world join, cleared on disconnect. */

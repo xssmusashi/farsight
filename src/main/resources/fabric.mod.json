@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "farsight",
+  "id": "xssm_farsight",
   "version": "${version}",
-  "name": "Farsight",
+  "name": "Farsight (xssmusashi)",
   "description": "Extreme render-distance mod — sparse voxel octree LoDs with GPU-driven rendering.",
   "authors": [
     "xssmusashi"
