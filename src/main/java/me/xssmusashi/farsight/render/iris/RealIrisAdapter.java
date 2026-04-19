@@ -14,6 +14,10 @@ import net.irisshaders.iris.pipeline.programs.ShaderKey;
 import net.irisshaders.iris.pipeline.programs.ShaderMap;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Lives in a dedicated sub-package so that its direct Iris imports are only
@@ -73,6 +77,54 @@ public final class RealIrisAdapter implements IrisAdapter {
     @Override
     public void refresh() {
         // Nothing cached — all accessors re-resolve on every call.
+    }
+
+    @Override
+    public Path shaderPackRoot() {
+        try {
+            Path packsDir = Iris.getShaderpacksDirectory();
+            if (packsDir == null) return null;
+            String name = resolvePackName();
+            if (name == null || name.isBlank()) return null;
+            Path shaders = packsDir.resolve(name).resolve("shaders");
+            return Files.isDirectory(shaders) ? shaders : null;
+        } catch (Throwable t) {
+            FarsightClient.LOGGER.debug("shaderPackRoot resolution threw", t);
+            return null;
+        }
+    }
+
+    /**
+     * Iris 1.10.x did not expose the active pack name on its stable
+     * {@code api.v0} surface, and internal methods have shuffled across the
+     * 1.9→1.10 boundary. We try a small ordered list of known accessors
+     * reflectively — the first one that returns a non-blank string wins.
+     */
+    private static String resolvePackName() {
+        // 1) Iris.getIrisConfig().getShaderPackName() → Optional<String>
+        try {
+            Method getConfig = Iris.class.getMethod("getIrisConfig");
+            Object cfg = getConfig.invoke(null);
+            if (cfg != null) {
+                Method getName = cfg.getClass().getMethod("getShaderPackName");
+                Object v = getName.invoke(cfg);
+                if (v instanceof Optional<?> opt && opt.isPresent()) {
+                    return opt.get().toString();
+                }
+                if (v instanceof String s) return s;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // fall through
+        }
+        // 2) Iris.getCurrentPackName() — some versions have this as static
+        try {
+            Method m = Iris.class.getMethod("getCurrentPackName");
+            Object v = m.invoke(null);
+            if (v instanceof String s) return s;
+        } catch (ReflectiveOperationException ignored) {
+            // fall through
+        }
+        return null;
     }
 
     private static IrisRenderingPipeline currentIrisPipeline() {

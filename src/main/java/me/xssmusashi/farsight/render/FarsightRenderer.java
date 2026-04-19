@@ -4,6 +4,7 @@ import me.xssmusashi.farsight.FarsightClient;
 import me.xssmusashi.farsight.render.shader.IrisAdapter;
 import me.xssmusashi.farsight.render.shader.IrisCompatibility;
 import me.xssmusashi.farsight.render.shader.PipelineWatcher;
+import me.xssmusashi.farsight.render.shader.ShaderOverrides;
 
 /**
  * Top-level renderer orchestrator. Lazily initialises GL resources the first
@@ -32,14 +33,12 @@ public final class FarsightRenderer implements AutoCloseable {
         if (initialised) return;
         try {
             context = GpuContext.probe();
-            sectionProgram = ShaderProgram.graphics(
-                ShaderProgram.loadResource("/assets/farsight/shaders/section.vert"),
-                ShaderProgram.loadResource("/assets/farsight/shaders/section.frag"));
+            pipelineWatcher = PipelineWatcher.defaultInstance();
+            irisAdapter = IrisAdapter.resolve();
+            sectionProgram = compileSectionProgram(irisAdapter);
             culling = new CullingCompute();
             vboPool = new SectionVboPool(DEFAULT_VBO_BYTES);
             drawBuffer = new MdicDrawBuffer(DEFAULT_MAX_DRAWS);
-            pipelineWatcher = PipelineWatcher.defaultInstance();
-            refreshIrisAdapter();
             initialised = true;
             FarsightClient.LOGGER.info(
                 "Farsight renderer initialised (iris={}, pack={})",
@@ -53,12 +52,34 @@ public final class FarsightRenderer implements AutoCloseable {
     }
 
     /**
-     * Re-queries the Iris adapter; call on shader pack hot-swap. Cheap — only
-     * flips an enum-like object reference.
+     * Compiles the section draw program, preferring pack-supplied
+     * {@code gbuffers_farsight_lod.{vsh,fsh}} if present.
+     */
+    private static ShaderProgram compileSectionProgram(IrisAdapter adapter) {
+        java.nio.file.Path packRoot = adapter == null ? null : adapter.shaderPackRoot();
+        String vert = ShaderOverrides.load(packRoot, ShaderOverrides.VERT_FILE,
+            "/assets/farsight/shaders/section.vert");
+        String frag = ShaderOverrides.load(packRoot, ShaderOverrides.FRAG_FILE,
+            "/assets/farsight/shaders/section.frag");
+        return ShaderProgram.graphics(vert, frag);
+    }
+
+    /**
+     * Re-queries the Iris adapter and recompiles any pack-overridden
+     * shaders. Called automatically by {@link #beginFrame()} when the watcher
+     * observes a pipeline identity change.
      */
     public void refreshIrisAdapter() {
         this.irisAdapter = IrisAdapter.resolve();
-        FarsightClient.LOGGER.info("Iris adapter refreshed → active={}", irisAdapter.isActive());
+        FarsightClient.LOGGER.info("Iris adapter refreshed → active={}, packRoot={}",
+            irisAdapter.isActive(), irisAdapter.shaderPackRoot());
+        try {
+            ShaderProgram next = compileSectionProgram(irisAdapter);
+            if (sectionProgram != null) sectionProgram.close();
+            sectionProgram = next;
+        } catch (RuntimeException e) {
+            FarsightClient.LOGGER.error("section program recompile on hot-swap failed — keeping old program", e);
+        }
     }
 
     public IrisAdapter irisAdapter() { return irisAdapter; }

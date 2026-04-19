@@ -34,6 +34,14 @@ public interface IrisAdapter {
     /** Compiled {@code gbuffers_terrain_solid} program id, or 0 if not available. */
     int terrainProgramId();
 
+    /**
+     * Returns the filesystem path to the currently-active shader pack's
+     * {@code shaders/} directory, or {@code null} if no pack is active or
+     * the pack is embedded (not on disk). Used by {@link ShaderOverrides} to
+     * resolve pack-supplied {@code gbuffers_farsight_lod.{vsh,fsh}}.
+     */
+    default java.nio.file.Path shaderPackRoot() { return null; }
+
     /** Binds the gbuffer before Farsight draws. */
     default void bindForDraw() {
         int fbo = gbufferFboId();
