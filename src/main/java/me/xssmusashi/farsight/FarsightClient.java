@@ -3,6 +3,8 @@ package me.xssmusashi.farsight;
 import me.xssmusashi.farsight.commands.FarsightCommand;
 import me.xssmusashi.farsight.config.FarsightConfig;
 import me.xssmusashi.farsight.ingest.ChunkIngestor;
+import me.xssmusashi.farsight.ingest.ChunkObserver;
+import me.xssmusashi.farsight.world.WorldLifecycle;
 import net.fabricmc.api.ClientModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,5 +26,7 @@ public final class FarsightClient implements ClientModInitializer {
         LOGGER.info("Farsight {} initialising — lodRenderDistance={}, compute culling={}",
             MOD_ID, CONFIG.lodRenderDistance, CONFIG.useComputeCulling);
         FarsightCommand.register(ACTIVE_INGESTOR::get);
+        WorldLifecycle.register();
+        ChunkObserver.register();
     }
 }

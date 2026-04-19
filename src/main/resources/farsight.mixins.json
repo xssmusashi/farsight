@@ -4,8 +4,10 @@
   "package": "me.xssmusashi.farsight.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
-  "client": [],
+  "client": [
+    "client.LevelRendererMixin"
+  ],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   }
 }

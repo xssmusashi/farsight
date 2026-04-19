@@ -1,6 +1,6 @@
 # Farsight status
 
-_Last updated 2026-04-20 (v0.1.4-alpha)._
+_Last updated 2026-04-20 (v0.1.5-alpha)._
 
 ## Summary
 
@@ -34,14 +34,25 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 ## What works
 
 - `./gradlew build` produces a loadable jar (`farsight-0.1.0-alpha.jar`).
-- 58 unit tests pass across voxel, palette, section, LMDB, LoD (intra- and cross-section), mesher, AO, biome palette, ingest, config, region discovery, shader resources, Iris compat probe, shader overrides, pipeline watcher (hot-swap detection with mocked supplier).
+- 60 unit tests pass across voxel, palette, section, LMDB, LoD (intra- and cross-section), mesher, AO, biome palette, ingest, config, region discovery, shader resources, Iris compat probe, shader overrides, pipeline watcher, world session lifecycle.
 - Storage benchmarks exceed targets (see below).
 - Greedy mesher passes its ≥5× polygon-reduction gate on realistic heightmap terrain.
 - Client mod entrypoint logs init, loads config, registers `/farsight stats` and `/farsight rebuild` commands.
 
+## v0.1.5 additions — wiring into Minecraft
+
+- **`LevelRendererMixin`** — `@Inject(method = "renderLevel", at = @At("HEAD"), require = 0)` calls `FarsightRenderHook.onFrame()` every frame. `require = 0` means descriptor drift in 26.1.x point releases logs a warning instead of crashing mod load; Farsight still loads and ingests, only the render pass sits idle.
+- **`FarsightRenderHook`** — wraps `FarsightRenderer.ensureInitialised()` + `beginFrame()` in one try/catch. First exception permanently disables the hook for the session (no loop-crash inside the render thread).
+- **`WorldLifecycle`** — registers `ClientPlayConnectionEvents.JOIN/DISCONNECT`. On join, creates a `WorldSession` (LmdbStorage + ChunkIngestor rooted under `<gameDir>/farsight-cache/<worldId>`) and publishes the ingestor via `FarsightClient.ACTIVE_INGESTOR`. On disconnect, closes cleanly.
+- **`WorldIdentifier`** — derives a cache dir key: single-player uses the save's level name (`sp.getWorldData().getLevelName()`), multiplayer uses the sanitised server address.
+- **`ChunkObserver`** — hooks `ClientChunkEvents.CHUNK_LOAD`. For each MC `LevelChunkSection`, packs block states into a `ChunkSnapshot` occupying the lower 16×16×16 octant of a Farsight 32³ (upper half stays air for this pass — cross-chunk aggregation is the next refinement). Skips `hasOnlyAir()` sections, submits the rest to the ingestor.
+- **`BlockStateMapper`** — `BlockState` → packed voxel entry. Uses `Block.BLOCK_STATE_REGISTRY.getId(state)` truncated to 24 bits, derives flags from `getFluidState()` / `isSolid()`.
+
 ## What does not
 
-- **The renderer does not actually render.** `FarsightRenderer` exists but is never instantiated by a mixin into Minecraft's render pipeline. AO + biome shader logic is ready but is not yet hit by real pixels.
+- **No actual draw pass yet.** The render hook runs `beginFrame()` (Iris pipeline watcher tick + adapter FBO bind) but does not yet dispatch the culling compute or draw sections. That last step needs the VBO pool populated with mesh bytes from persisted sections — section-mesh persistence is the missing link.
+- **Sparse Farsight sections.** Chunk ingest currently produces sections with content only in the lower octant — 4 MC chunks are not yet merged into one 32³ native section.
+- **No biome IDs yet.** `BlockStateMapper.toVoxel(state, 0)` — biome is always 0 until the registry lookup is wired.
 - **Minecraft chunk data is never captured.** Ingest pipeline is end-to-end testable with synthetic snapshots, but there is no mixin/event hook that turns real `LevelChunk` data into `ChunkSnapshot`.
 - **Cross-section LoD aggregation** (stitching 8 adjacent native sections into one level-1 section, and so on up the tree) is not implemented. Only intra-section mip pyramids exist.
 - **Mesh persistence** is not done — meshes are built on ingest but not stored; Phase 5 would need them on disk.
