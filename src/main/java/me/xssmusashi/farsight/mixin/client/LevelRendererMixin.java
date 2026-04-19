@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Quaternionf;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -56,13 +57,13 @@ public abstract class LevelRendererMixin {
     }
 
     /**
-     * Builds a view-projection matrix from scratch. The {@code Matrix4fc} arg
-     * passed to {@code renderLevel} is actually {@code viewRotationMatrix}
-     * (verified by matching {@code m00}), not a perspective matrix — and
-     * {@code state.projectionMatrix} field carries {@code m00=Infinity}, so
-     * it's unusable too. We therefore rebuild perspective ourselves from
-     * {@code hudFov} + {@code depthFar} + window aspect, then apply
-     * rotation + camera translation.
+     * Builds view-projection from scratch using:
+     *   - hudFov + depthFar + window aspect for JOML's standard perspective (camera looking -Z)
+     *   - inverted camera orientation quaternion as the world→view rotation
+     *     (safer than the {@code viewRotationMatrix} field whose axis convention
+     *     doesn't match JOML's perspective — empirically half of yaw range comes
+     *     out with {@code w<0} which clips everything)
+     *   - translate(-cameraPos) at the end
      */
     private static Matrix4f farsight$buildViewProj(CameraRenderState state, Matrix4fc projectionArg) {
         if (state == null) return new Matrix4f();
@@ -72,9 +73,9 @@ public abstract class LevelRendererMixin {
             float fov = c.getDeclaredField("hudFov").getFloat(state);
             float far = c.getDeclaredField("depthFar").getFloat(state);
 
-            Field viewRotField = c.getDeclaredField("viewRotationMatrix");
-            viewRotField.setAccessible(true);
-            Matrix4fc viewRot = (Matrix4fc) viewRotField.get(state);
+            Field orientField = c.getDeclaredField("orientation");
+            orientField.setAccessible(true);
+            Quaternionf orientation = (Quaternionf) orientField.get(state);
 
             Field posField = c.getDeclaredField("pos");
             posField.setAccessible(true);
@@ -89,9 +90,11 @@ public abstract class LevelRendererMixin {
             int h = mc.getWindow().getHeight();
             float aspect = (h == 0) ? 1f : (float) w / (float) h;
 
+            Quaternionf worldToView = new Quaternionf(orientation).invert();
+
             Matrix4f vp = new Matrix4f();
             vp.perspective((float) Math.toRadians(fov), aspect, 0.05f, Math.max(far, 512f));
-            if (viewRot != null) vp.mul(viewRot);
+            vp.rotate(worldToView);
             vp.translate((float) -px, (float) -py, (float) -pz);
             return vp;
         } catch (Throwable t) {
