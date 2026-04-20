@@ -34,5 +34,6 @@ public final class FarsightClient implements ClientModInitializer {
         FarsightCommand.register(ACTIVE_INGESTOR::get);
         WorldLifecycle.register();
         ChunkObserver.register();
+        // Actual draw is triggered from MinecraftMixin at RETURN of renderFrame.
     }
 }

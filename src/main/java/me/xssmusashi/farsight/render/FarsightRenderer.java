@@ -152,14 +152,50 @@ public final class FarsightRenderer implements AutoCloseable {
         viewProjection.get(matArray);
 
         // DEBUG: force geometry on top of everything, both sides visible.
-        // Trade correctness for visibility — revert once pixels appear.
+        // Leave MC's framebuffer bound — binding 0 wipes the already-composited world.
         GL33.glDisable(GL33.GL_DEPTH_TEST);
         GL33.glDisable(GL33.GL_CULL_FACE);
         GL33.glDisable(GL33.GL_BLEND);
-        GL33.glDisable(GL33.GL_SCISSOR_TEST);
         GL33.glDisable(GL33.GL_STENCIL_TEST);
         GL33.glDepthMask(true);
         GL33.glColorMask(true, true, true, true);
+
+        // CANARY: log actual viewport then paint a giant red rectangle.
+        // If user sees full-screen red we're writing into the display buffer.
+        if ((frameCounter % 300L) == 2L) {
+            int[] vp = new int[4];
+            GL33.glGetIntegerv(GL33.GL_VIEWPORT, vp);
+            int drawFbo = GL33.glGetInteger(GL33.GL_DRAW_FRAMEBUFFER_BINDING);
+            FarsightClient.LOGGER.info("render-slot viewport=[{},{},{},{}] drawFbo={}",
+                vp[0], vp[1], vp[2], vp[3], drawFbo);
+        }
+        // DEBUG: MC 26.1.1's blaze3d refactor moved rendering behind a
+        // GpuDevice abstraction — direct glClear/glDrawElements do not
+        // reach the displayed framebuffer. Raw-GL render path is parked
+        // pending a proper blaze3d integration.
+
+        // Clip-space sanity check: see how many registered slots actually
+        // fall inside the frustum with the current matrix. If zero, either
+        // the matrix is still wrong or everything is out of range.
+        if ((frameCounter % 300L) == 1L) {
+            SectionRegistry.Slot[] probe = registry.snapshot();
+            int inFrustum = 0;
+            int testedMax = Math.min(probe.length, 500);
+            for (int i = 0; i < testedMax; i++) {
+                SectionRegistry.Slot s = probe[i];
+                if (s == null) continue;
+                float cx = s.originX() + s.extent() * 0.5f;
+                float cy = s.originY() + s.extent() * 0.5f;
+                float cz = s.originZ() + s.extent() * 0.5f;
+                org.joml.Vector4f v = new org.joml.Vector4f(cx, cy, cz, 1f);
+                viewProjection.transform(v);
+                if (v.w > 0 && Math.abs(v.x) < v.w * 1.5f && Math.abs(v.y) < v.w * 1.5f) {
+                    inFrustum++;
+                }
+            }
+            FarsightClient.LOGGER.info("clip-space sanity: {}/{} tested slot centres inside frustum",
+                inFrustum, testedMax);
+        }
 
         if ((frameCounter % 300L) == 0L) {
             int[] vp = new int[4];

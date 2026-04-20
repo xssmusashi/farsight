@@ -61,6 +61,22 @@ pixels in-game (Phase 5 is scaffold-only, no mixin into the render loop).
 - **`ChunkObserver`** — hooks `ClientChunkEvents.CHUNK_LOAD`. For each MC `LevelChunkSection`, packs block states into a `ChunkSnapshot` occupying the lower 16×16×16 octant of a Farsight 32³ (upper half stays air for this pass — cross-chunk aggregation is the next refinement). Skips `hasOnlyAir()` sections, submits the rest to the ingestor.
 - **`BlockStateMapper`** — `BlockState` → packed voxel entry. Uses `Block.BLOCK_STATE_REGISTRY.getId(state)` truncated to 24 bits, derives flags from `getFluidState()` / `isSolid()`.
 
+## Known blocker: blaze3d in MC 26.1.1
+
+MC 26.1.1 ships a refactored **blaze3d** that moves all rendering behind a
+`GpuDevice` abstraction — `RenderSystem.clearColor`, `RenderSystem.clear`,
+and the old direct-GL calls are gone. Raw LWJGL `glClear` and
+`glDrawElementsBaseVertex` from a mixin at `Minecraft.renderFrame` RETURN
+do **not** reach the displayed framebuffer (verified by a scissor+clear
+canary that nothing shows up). Draws on `drawFbo=0` are silently
+overwritten by MC's scheduled pipeline submits.
+
+Next session's render work needs to go through `RenderSystem.getDevice()`
+→ new `RenderPipeline.submit(...)` API. That's a multi-day investigation
+not scoped into this run. Ingest, mesh generation, and LMDB/filesystem
+persistence are all **working and verified** (`/farsight stats` shows
+thousands of sections and polygon counts on real chunk load).
+
 ## What does not (as of v0.1.6)
 
 - **Camera position uniform** — Mojang renamed the position accessors off `Camera` in 26.1.1 and the exact replacement hasn't been pinned down; the mixin passes {0,0,0} as camera pos, so the fragment shader's fog distance is measured from the world origin until that's fixed. Visual weirdness only — geometry still renders.

@@ -37,6 +37,15 @@ repositories {
 
 loom {
     accessWidenerPath = file("src/main/resources/farsight.accesswidener")
+    // DevAuth 1.2.2 fails Microsoft OAuth PKCE — dev runs under a fake
+    // 'Player617' account. Fine for singleplayer. Auto-load testworld so
+    // the render path is exercised without a manual click-through.
+    runs {
+        client {
+            programArg("--quickPlaySingleplayer")
+            programArg("testworld")
+        }
+    }
 }
 
 processResources {
